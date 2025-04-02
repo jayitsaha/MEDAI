@@ -1,0 +1,695 @@
+// src/screens/pregnancy/YogaScreen.js
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Image,
+  ScrollView,
+  Dimensions,
+  Modal,
+  ActivityIndicator
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Video } from 'expo-av';
+
+// Sample yoga poses data (in a real app, this would come from an API)
+const YOGA_POSES = {
+  firstTrimester: [
+    {
+      id: '1-1',
+      title: 'Modified Mountain Pose',
+      subtitle: 'Improves posture and balance',
+      description: 'Stand tall with feet hip-width apart, arms at sides. Draw shoulders back and down, engage core gently.',
+      duration: '1-2 minutes',
+      benefits: [
+        'Improves posture',
+        'Reduces lower back pain',
+        'Strengthens thighs and ankles'
+      ],
+      imageUrl: 'https://example.com/mountain_pose.jpg', // Placeholder
+      videoUrl: 'https://example.com/mountain_pose_video.mp4' // Placeholder
+    },
+    {
+      id: '1-2',
+      title: 'Cat-Cow Stretch',
+      subtitle: 'Relieves back pain',
+      description: 'Start on hands and knees. Alternate between arching back (cow) and rounding spine (cat).',
+      duration: '5-10 repetitions',
+      benefits: [
+        'Relieves back and hip pain',
+        'Improves circulation',
+        'Gently strengthens abdominal muscles'
+      ],
+      imageUrl: 'https://example.com/cat_cow.jpg', // Placeholder
+      videoUrl: 'https://example.com/cat_cow_video.mp4' // Placeholder
+    },
+    {
+      id: '1-3',
+      title: 'Seated Side Stretch',
+      subtitle: 'Releases tension in side body',
+      description: 'Sit cross-legged, reach one arm overhead and lean to opposite side. Hold and repeat on other side.',
+      duration: '30 seconds each side',
+      benefits: [
+        'Stretches intercostal muscles',
+        'Opens breathing capacity',
+        'Relieves tension in shoulders and neck'
+      ],
+      imageUrl: 'https://example.com/side_stretch.jpg', // Placeholder
+      videoUrl: 'https://example.com/side_stretch_video.mp4' // Placeholder
+    }
+  ],
+  secondTrimester: [
+    {
+      id: '2-1',
+      title: 'Warrior II',
+      subtitle: 'Builds strength and stability',
+      description: 'Step feet wide apart, turn one foot out. Bend knee over ankle, extend arms and gaze over front hand.',
+      duration: '30-60 seconds each side',
+      benefits: [
+        'Strengthens legs and core',
+        'Opens hips',
+        'Improves endurance'
+      ],
+      imageUrl: 'https://example.com/warrior2.jpg', // Placeholder
+      videoUrl: 'https://example.com/warrior2_video.mp4' // Placeholder
+    },
+    {
+      id: '2-2',
+      title: 'Wide-Legged Forward Fold',
+      subtitle: 'Stretches inner thighs',
+      description: 'Step feet wide apart, fold forward from hips. Rest hands on floor or blocks if needed.',
+      duration: '30-60 seconds',
+      benefits: [
+        'Stretches hamstrings and inner thighs',
+        'Relieves lower back tension',
+        'Calms the mind'
+      ],
+      imageUrl: 'https://example.com/wide_fold.jpg', // Placeholder
+      videoUrl: 'https://example.com/wide_fold_video.mp4' // Placeholder
+    },
+    {
+      id: '2-3',
+      title: 'Supported Triangle Pose',
+      subtitle: 'Side body and leg stretch',
+      description: 'Step feet wide apart, extend one arm down to shin/block/floor and the other arm up.',
+      duration: '30 seconds each side',
+      benefits: [
+        'Stretches legs, hips and spine',
+        'Improves balance',
+        'Opens chest and shoulders'
+      ],
+      imageUrl: 'https://example.com/triangle.jpg', // Placeholder
+      videoUrl: 'https://example.com/triangle_video.mp4' // Placeholder
+    }
+  ],
+  thirdTrimester: [
+    {
+      id: '3-1',
+      title: 'Modified Squat',
+      subtitle: 'Opens pelvic floor',
+      description: 'Stand with feet wider than hips, lower into squat. Use wall or chair for support if needed.',
+      duration: '30-60 seconds',
+      benefits: [
+        'Opens pelvis',
+        'Stretches pelvic floor',
+        'Prepares for labor'
+      ],
+      imageUrl: 'https://example.com/squat.jpg', // Placeholder
+      videoUrl: 'https://example.com/squat_video.mp4' // Placeholder
+    },
+    {
+      id: '3-2',
+      title: 'Seated Butterfly',
+      subtitle: 'Hip opener',
+      description: 'Sit with soles of feet together, knees out to sides. Sit on blanket for support if needed.',
+      duration: '1-2 minutes',
+      benefits: [
+        'Opens hips',
+        'Releases tension in pelvis',
+        'Improves circulation to pelvis'
+      ],
+      imageUrl: 'https://example.com/butterfly.jpg', // Placeholder
+      videoUrl: 'https://example.com/butterfly_video.mp4' // Placeholder
+    },
+    {
+      id: '3-3',
+      title: 'Side-Lying Relaxation',
+      subtitle: 'Rest and rejuvenation',
+      description: 'Lie on left side with pillows supporting head, belly, and between knees.',
+      duration: '5-10 minutes',
+      benefits: [
+        'Promotes relaxation',
+        'Improves circulation',
+        'Relieves pressure on organs'
+      ],
+      imageUrl: 'https://example.com/side_lying.jpg', // Placeholder
+      videoUrl: 'https://example.com/side_lying_video.mp4' // Placeholder
+    }
+  ]
+};
+
+const YogaScreen = () => {
+  const [selectedTrimester, setSelectedTrimester] = useState('firstTrimester');
+  const [selectedPose, setSelectedPose] = useState(null);
+  const [sessionHistory, setSessionHistory] = useState({});
+  const [poseModalVisible, setPoseModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(false);
+  
+  const screenWidth = Dimensions.get('window').width;
+  
+  // Load session history on component mount
+  useEffect(() => {
+    loadSessionHistory();
+  }, []);
+  
+  // Load session history from storage
+  const loadSessionHistory = async () => {
+    try {
+      const savedHistory = await AsyncStorage.getItem('yoga_session_history');
+      if (savedHistory) {
+        setSessionHistory(JSON.parse(savedHistory));
+      }
+    } catch (error) {
+      console.error('Error loading yoga session history:', error);
+    }
+  };
+  
+  // Save session history to storage
+  const saveSessionHistory = async (history) => {
+    try {
+      await AsyncStorage.setItem('yoga_session_history', JSON.stringify(history));
+    } catch (error) {
+      console.error('Error saving yoga session history:', error);
+    }
+  };
+  
+  // Record completed session
+  const recordSession = async (poseId) => {
+    const timestamp = new Date().toISOString();
+    
+    const updatedHistory = {
+      ...sessionHistory,
+      [poseId]: [...(sessionHistory[poseId] || []), timestamp]
+    };
+    
+    setSessionHistory(updatedHistory);
+    await saveSessionHistory(updatedHistory);
+  };
+  
+  // Format pose completion status
+  const getPoseCompletionStatus = (poseId) => {
+    if (!sessionHistory[poseId]) return '0 times';
+    
+    // Count sessions in last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentSessions = sessionHistory[poseId].filter(timestamp => {
+      const sessionDate = new Date(timestamp);
+      return sessionDate >= sevenDaysAgo;
+    });
+    
+    return `${recentSessions.length} ${recentSessions.length === 1 ? 'time' : 'times'} this week`;
+  };
+  
+  // Handle pose selection and modal display
+  const handlePosePress = (pose) => {
+    setSelectedPose(pose);
+    setPoseModalVisible(true);
+  };
+  
+  // Complete a yoga session
+  const completeSession = async () => {
+    setLoading(true);
+    
+    try {
+      await recordSession(selectedPose.id);
+      
+      // Simulate session completion delay
+      setTimeout(() => {
+        setLoading(false);
+        setPoseModalVisible(false);
+        // Show completion message or update UI
+      }, 1000);
+    } catch (error) {
+      console.error('Error completing session:', error);
+      setLoading(false);
+    }
+  };
+  
+  // Render a yoga pose card
+  const renderPoseCard = ({ item }) => {
+    const completionStatus = getPoseCompletionStatus(item.id);
+    
+    return (
+      <TouchableOpacity 
+        style={styles.poseCard}
+        onPress={() => handlePosePress(item)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.poseImageContainer}>
+          {/* In a real app, use actual images */}
+          <View style={styles.posePlaceholder}>
+            <Ionicons name="fitness-outline" size={40} color="#FF69B4" />
+          </View>
+        </View>
+        
+        <View style={styles.poseContent}>
+          <Text style={styles.poseTitle}>{item.title}</Text>
+          <Text style={styles.poseSubtitle}>{item.subtitle}</Text>
+          
+          <View style={styles.poseStats}>
+            <View style={styles.statItem}>
+              <Ionicons name="time-outline" size={16} color="#FF69B4" />
+              <Text style={styles.statText}>{item.duration}</Text>
+            </View>
+            
+            <View style={styles.statItem}>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#FF69B4" />
+              <Text style={styles.statText}>{completionStatus}</Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.startButton}
+            onPress={() => handlePosePress(item)}
+          >
+            <Text style={styles.startButtonText}>Start</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+  
+  // Render pose details modal
+  const renderPoseModal = () => {
+    if (!selectedPose) return null;
+    
+    return (
+      <Modal
+        visible={poseModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setPoseModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={() => setPoseModalVisible(false)}
+          >
+            <Ionicons name="close" size={24} color="#333" />
+          </TouchableOpacity>
+          
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <Text style={styles.modalTitle}>{selectedPose.title}</Text>
+            <Text style={styles.modalSubtitle}>{selectedPose.subtitle}</Text>
+            
+            <View style={styles.videoContainer}>
+              {videoLoading && (
+                <View style={styles.videoLoadingContainer}>
+                  <ActivityIndicator size="large" color="#FF69B4" />
+                </View>
+              )}
+              
+              {/* In a real app, use actual video content */}
+              <View style={styles.videoPlaceholder}>
+                <Ionicons name="videocam" size={50} color="#FF69B4" />
+                <Text style={styles.videoPlaceholderText}>Video Guide</Text>
+              </View>
+              
+              {/* 
+              <Video
+                source={{ uri: selectedPose.videoUrl }}
+                rate={1.0}
+                volume={1.0}
+                isMuted={false}
+                resizeMode="cover"
+                shouldPlay={false}
+                isLooping={false}
+                style={styles.video}
+                onLoadStart={() => setVideoLoading(true)}
+                onLoad={() => setVideoLoading(false)}
+              />
+              */}
+            </View>
+            
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Description</Text>
+              <Text style={styles.sectionText}>{selectedPose.description}</Text>
+            </View>
+            
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Duration</Text>
+              <Text style={styles.sectionText}>{selectedPose.duration}</Text>
+            </View>
+            
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Benefits</Text>
+              {selectedPose.benefits.map((benefit, index) => (
+                <View key={index} style={styles.benefitItem}>
+                  <Ionicons name="checkmark-circle" size={18} color="#FF69B4" />
+                  <Text style={styles.benefitText}>{benefit}</Text>
+                </View>
+              ))}
+            </View>
+            
+            <View style={styles.completionContainer}>
+              <Text style={styles.completionText}>
+                Completed {sessionHistory[selectedPose.id]?.length || 0} times
+              </Text>
+              
+              <TouchableOpacity 
+                style={styles.completeButton}
+                onPress={completeSession}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.completeButtonText}>
+                    Complete Session
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+    );
+  };
+  
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Prenatal Yoga</Text>
+        <Text style={styles.headerSubtitle}>
+          Safe exercises designed for each trimester
+        </Text>
+      </View>
+      
+      <View style={styles.tabContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabs}
+        >
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              selectedTrimester === 'firstTrimester' && styles.activeTab
+            ]}
+            onPress={() => setSelectedTrimester('firstTrimester')}
+          >
+            <Text 
+              style={[
+                styles.tabText, 
+                selectedTrimester === 'firstTrimester' && styles.activeTabText
+              ]}
+            >
+              First Trimester
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              selectedTrimester === 'secondTrimester' && styles.activeTab
+            ]}
+            onPress={() => setSelectedTrimester('secondTrimester')}
+          >
+            <Text 
+              style={[
+                styles.tabText, 
+                selectedTrimester === 'secondTrimester' && styles.activeTabText
+              ]}
+            >
+              Second Trimester
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[
+              styles.tab, 
+              selectedTrimester === 'thirdTrimester' && styles.activeTab
+            ]}
+            onPress={() => setSelectedTrimester('thirdTrimester')}
+          >
+            <Text 
+              style={[
+                styles.tabText, 
+                selectedTrimester === 'thirdTrimester' && styles.activeTabText
+              ]}
+            >
+              Third Trimester
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      
+      <FlatList
+        data={YOGA_POSES[selectedTrimester]}
+        renderItem={renderPoseCard}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.posesList}
+        showsVerticalScrollIndicator={false}
+      />
+      
+      {renderPoseModal()}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+  },
+  header: {
+    padding: 15,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
+  },
+  tabContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  tabs: {
+    paddingHorizontal: 15,
+  },
+  tab: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: '#F0F0F0',
+  },
+  activeTab: {
+    backgroundColor: '#FFE4E1',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#FF69B4',
+    fontWeight: '600',
+  },
+  posesList: {
+    padding: 15,
+  },
+  poseCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  poseImageContainer: {
+    width: 120,
+    height: 160,
+    backgroundColor: '#F5F5F5',
+  },
+  posePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFE4E1',
+  },
+  poseContent: {
+    flex: 1,
+    padding: 15,
+    justifyContent: 'space-between',
+  },
+  poseTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  poseSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10,
+  },
+  poseStats: {
+    flexDirection: 'row',
+    marginBottom: 15,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  statText: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 5,
+  },
+  startButton: {
+    backgroundColor: '#FF69B4',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  startButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    padding: 10,
+  },
+  modalContent: {
+    padding: 20,
+    paddingTop: 80,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+  },
+  videoContainer: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  videoLoadingContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    zIndex: 1,
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+  },
+  videoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFE4E1',
+  },
+  videoPlaceholderText: {
+    marginTop: 10,
+    color: '#FF69B4',
+    fontWeight: '600',
+  },
+  sectionContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  sectionText: {
+    fontSize: 16,
+    color: '#555',
+    lineHeight: 22,
+  },
+  benefitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  benefitText: {
+    fontSize: 16,
+    color: '#555',
+    marginLeft: 10,
+  },
+  completionContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    alignItems: 'center',
+  },
+  completionText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+  },
+  completeButton: {
+    backgroundColor: '#FF69B4',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '80%',
+  },
+  completeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
+export default YogaScreen;

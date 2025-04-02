@@ -1,0 +1,16 @@
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="simpleLogoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6A5ACD" />
+      <stop offset="100%" stop-color="#FF69B4" />
+    </linearGradient>
+  </defs>
+  <circle cx="40" cy="40" r="36" fill="white" stroke="url(#simpleLogoGradient)" stroke-width="3"/>
+  <path d="M20 32C20 27.5817 23.5817 24 28 24H52C56.4183 24 60 27.5817 60 32V48C60 52.4183 56.4183 56 52 56H28C23.5817 56 20 52.4183 20 48V32Z" fill="url(#simpleLogoGradient)" opacity="0.2"/>
+  <path d="M30 26L30 54" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50 26L50 54" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M30 40H50" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M26 32L54 32" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M26 48L54 48" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M40 26L40 54" stroke="url(#simpleLogoGradient)" stroke-width="3" stroke-linecap="round"/>
+</svg>

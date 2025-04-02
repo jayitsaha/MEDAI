@@ -1,0 +1,16 @@
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="safeZoneGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#11CDEF" />
+      <stop offset="100%" stop-color="#1171EF" />
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" rx="20" fill="#E8F4F8"/>
+  <circle cx="300" cy="200" r="120" stroke="url(#safeZoneGradient)" stroke-width="6" stroke-dasharray="15 15" fill="url(#safeZoneGradient)" opacity="0.1"/>
+  <rect x="280" y="180" width="40" height="40" rx="5" fill="url(#safeZoneGradient)"/>
+  <path d="M100 100L200 150L300 100L400 150L500 100" stroke="#999" stroke-width="4"/>
+  <path d="M100 150L200 200L300 150L400 200L500 150" stroke="#999" stroke-width="4"/>
+  <path d="M100 200L200 250L300 200L400 250L500 200" stroke="#999" stroke-width="4"/>
+  <path d="M100 250L200 300L300 250L400 300L500 250" stroke="#999" stroke-width="4"/>
+  <circle cx="250" cy="250" r="10" fill="#FF6B6B"/>
+</svg>

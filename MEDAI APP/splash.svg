@@ -1,0 +1,12 @@
+<svg width="1242" height="2436" viewBox="0 0 1242 2436" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="splashGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6A5ACD" />
+      <stop offset="100%" stop-color="#FF69B4" />
+    </linearGradient>
+  </defs>
+  <rect width="1242" height="2436" fill="url(#splashGradient)"/>
+  <circle cx="621" cy="1118" r="200" fill="white"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M521 1018C521 962.772 565.772 918 621 918C676.228 918 721 962.772 721 1018V1218C721 1273.23 676.228 1318 621 1318C565.772 1318 521 1273.23 521 1218V1018ZM571 968L571 1268M671 968L671 1268M571 1118H671M541 1018L701 1018M541 1218L701 1218M621 968L621 1268" stroke="url(#splashGradient)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="621" y="1500" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="80" fill="white">MEDAI</text>
+</svg>
