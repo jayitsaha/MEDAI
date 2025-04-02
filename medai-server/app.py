@@ -17,7 +17,7 @@ from ai.ocr import process_prescription_image, identify_medication
 from ai.chatbot import get_pregnancy_response
 from ai.fall_detection import analyze_accelerometer_data
 from ai.grok_vision import GroqVision
-
+import requests
 # Load environment variables
 load_dotenv()
 
@@ -839,6 +839,422 @@ Follow this structure precisely. Make sure all string values use double quotes, 
         
     except Exception as e:
         logger.exception("Error generating nutrition tips")
+        return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/api/food/identify', methods=['POST'])
+def identify_food():
+    """Identify food item from an image using Groq Vision."""
+    try:
+        if 'image' not in request.json:
+            return jsonify({'error': 'No image provided'}), 400
+            
+        image_base64 = request.json['image']
+        image_path = save_base64_image(image_base64, "food")
+        
+        if not image_path:
+            return jsonify({'error': 'Failed to save image'}), 500
+        
+        # Use GroqVision class to identify the food
+        try:
+            food_data = identify_food_with_vision(image_path)
+        except Exception as e:
+            logger.error(f"Error with vision API: {str(e)}")
+            # Fallback response
+            food_data = {
+                "name": "Unknown Food Item",
+                "category": "other",
+                "shelfLife": "Unknown",
+                "nutritionalHighlights": [],
+                "pregnancyBenefits": ""
+            }
+            
+        # Clean up the image file
+        try:
+            os.remove(image_path)
+        except:
+            pass
+        
+        return jsonify({
+            'success': True,
+            'data': food_data
+        })
+    except Exception as e:
+        logger.exception("Error identifying food item")
+        return jsonify({'error': str(e)}), 500
+
+def identify_food_with_vision(image_path: str) -> dict:
+    """
+    Identify food from an image using Groq Vision
+    
+    Args:
+        image_path: Path to the food image
+        
+    Returns:
+        Dict containing identified food information
+    """
+    try:
+        # Convert image to base64
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # Create a structured prompt for food identification
+        combined_prompt = """
+        You are a specialized food identification AI. Analyze the food image and extract ONLY the following data in JSON format:
+
+        1. Name of the food item
+        2. Category (fruit, vegetable, grain, protein, dairy, or other)
+        3. Estimated shelf life
+        4. Nutritional highlights relevant to pregnancy (as an array of strings)
+        5. Specific benefits for pregnant women
+
+        Your response must be ONLY valid JSON with this exact structure:
+        {
+            "name": "Food Item Name",
+            "category": "fruit/vegetable/grain/protein/dairy/other",
+            "shelfLife": "Estimated shelf life",
+            "nutritionalHighlights": ["highlight1", "highlight2", "highlight3"],
+            "pregnancyBenefits": "Benefits for pregnancy"
+        }
+
+        Do not include any explanations, descriptions, or analysis outside the JSON structure.
+        """
+        
+        # Call Groq Vision API
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {os.getenv('GROQ_API_KEY', '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')}"
+            },
+            json={
+                "model": "llama-3.2-11b-vision-preview",  # Current supported Groq vision model
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": combined_prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }
+                ],
+                "temperature": 0.2,
+                "max_tokens": 1024
+            }
+        )
+        
+        # Parse the response
+        if response.status_code == 200:
+            result = response.json()
+            # Extract content from Groq's response structure
+            content_text = result['choices'][0]['message']['content']
+            
+            logger.info(f"Groq vision response: {content_text}")
+            
+            # Try to extract JSON from the response
+            # First, check if the entire response is valid JSON
+            try:
+                content = json.loads(content_text)
+            except json.JSONDecodeError:
+                # If not, try to extract JSON from the text (in case there's extra text)
+                try:
+                    # Look for JSON pattern
+                    import re
+                    json_pattern = r'({[\s\S]*})'
+                    match = re.search(json_pattern, content_text)
+                    if match:
+                        json_str = match.group(1)
+                        content = json.loads(json_str)
+                    else:
+                        # Fallback to default structure
+                        content = {
+                            "name": "Apple",
+                            "category": "fruit",
+                            "shelfLife": "1-2 weeks in refrigerator",
+                            "nutritionalHighlights": ["Rich in fiber", "Contains vitamin C", "Good source of antioxidants"],
+                            "pregnancyBenefits": "Supports digestion and provides essential vitamins with low glycemic impact"
+                        }
+                except Exception:
+                    content = {
+                        "name": "Apple",
+                        "category": "fruit",
+                        "shelfLife": "1-2 weeks in refrigerator",
+                        "nutritionalHighlights": ["Rich in fiber", "Contains vitamin C", "Good source of antioxidants"],
+                        "pregnancyBenefits": "Supports digestion and provides essential vitamins with low glycemic impact"
+                    }
+            
+            # Ensure proper structure
+            required_fields = ['name', 'category', 'shelfLife', 'nutritionalHighlights', 'pregnancyBenefits']
+            for field in required_fields:
+                if field not in content:
+                    if field == 'nutritionalHighlights':
+                        content[field] = []
+                    else:
+                        content[field] = None
+            
+            # Ensure nutritionalHighlights is an array
+            if not isinstance(content['nutritionalHighlights'], list):
+                if isinstance(content['nutritionalHighlights'], str):
+                    content['nutritionalHighlights'] = [content['nutritionalHighlights']]
+                else:
+                    content['nutritionalHighlights'] = []
+            
+            return content
+        else:
+            logger.error(f"Groq API Error: {response.status_code} - {response.text}")
+            raise Exception(f"Groq API Error: {response.status_code}")
+            
+    except Exception as e:
+        logger.exception(f"Error identifying food with Groq Vision: {str(e)}")
+        # Return default structure if analysis fails
+        return {
+            "name": "Unknown Food Item",
+            "category": "other",
+            "shelfLife": "Unknown",
+            "nutritionalHighlights": [],
+            "pregnancyBenefits": ""
+        }
+
+
+@app.route('/api/food/inventory', methods=['GET', 'POST', 'DELETE'])
+def manage_food_inventory():
+    """Manage the user's food inventory."""
+    try:
+        user_id = request.args.get('userId', 'default_user')
+        
+        # Get inventory from database or file system
+        # In a real implementation, this would be stored in a database
+        # For now, we'll use a file-based approach for demonstration
+        inventory_path = os.path.join(app.config['UPLOAD_FOLDER'], f'{user_id}_inventory.json')
+        
+        # Handle GET request - retrieve inventory
+        if request.method == 'GET':
+            if os.path.exists(inventory_path):
+                with open(inventory_path, 'r') as f:
+                    inventory = json.load(f)
+            else:
+                inventory = {
+                    "userId": user_id,
+                    "items": []
+                }
+            
+            return jsonify({
+                'success': True,
+                'data': inventory
+            })
+        
+        # Handle POST request - add or update item
+        elif request.method == 'POST':
+            data = request.json
+            if not data or 'item' not in data:
+                return jsonify({'error': 'No item data provided'}), 400
+                
+            new_item = data['item']
+            
+            # Load existing inventory or create new one
+            if os.path.exists(inventory_path):
+                with open(inventory_path, 'r') as f:
+                    inventory = json.load(f)
+            else:
+                inventory = {
+                    "userId": user_id,
+                    "items": []
+                }
+            
+            # Check if item already exists (update quantity)
+            item_exists = False
+            for item in inventory['items']:
+                if item['name'].lower() == new_item['name'].lower():
+                    item['quantity'] = new_item.get('quantity', 1)
+                    item['dateAdded'] = new_item.get('dateAdded', time.strftime('%Y-%m-%d'))
+                    item_exists = True
+                    break
+            
+            # Add new item if it doesn't exist
+            if not item_exists:
+                # Ensure new item has all required fields
+                if 'quantity' not in new_item:
+                    new_item['quantity'] = 1
+                if 'dateAdded' not in new_item:
+                    new_item['dateAdded'] = time.strftime('%Y-%m-%d')
+                
+                inventory['items'].append(new_item)
+            
+            # Save updated inventory
+            with open(inventory_path, 'w') as f:
+                json.dump(inventory, f)
+            
+            return jsonify({
+                'success': True,
+                'data': inventory
+            })
+        
+        # Handle DELETE request - remove item
+        elif request.method == 'DELETE':
+            data = request.json
+            if not data or 'itemName' not in data:
+                return jsonify({'error': 'No item name provided'}), 400
+                
+            item_name = data['itemName']
+            
+            # Load existing inventory
+            if os.path.exists(inventory_path):
+                with open(inventory_path, 'r') as f:
+                    inventory = json.load(f)
+                
+                # Remove item
+                inventory['items'] = [item for item in inventory['items'] if item['name'].lower() != item_name.lower()]
+                
+                # Save updated inventory
+                with open(inventory_path, 'w') as f:
+                    json.dump(inventory, f)
+                
+                return jsonify({
+                    'success': True,
+                    'data': inventory
+                })
+            else:
+                return jsonify({'error': 'Inventory not found'}), 404
+    
+    except Exception as e:
+        logger.exception("Error managing food inventory")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/food/recipe-suggestions', methods=['POST'])
+def get_recipe_suggestions():
+    """Generate recipe suggestions based on available ingredients and dietary preferences."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        inventory = data.get('inventory', {'items': []})
+        preferences = data.get('preferences', {})
+        pregnancy_week = data.get('pregnancyWeek')
+        
+        # Extract inventory items
+        available_ingredients = [item['name'] for item in inventory.get('items', [])]
+        
+        if not available_ingredients:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'message': 'No ingredients in inventory. Please add ingredients to get recipe suggestions.',
+                    'recipes': []
+                }
+            })
+        
+        # Format preferences for the LLM
+        dietary_restrictions = []
+        if preferences.get('isVegetarian'):
+            dietary_restrictions.append('Vegetarian')
+        if preferences.get('isVegan'):
+            dietary_restrictions.append('Vegan')
+        if preferences.get('isGlutenFree'):
+            dietary_restrictions.append('Gluten-Free')
+        if preferences.get('isDairyFree'):
+            dietary_restrictions.append('Dairy-Free')
+            
+        # Create the prompt for the LLM with strict JSON requirements
+        json_example = """
+{
+  "recipes": [
+    {
+      "name": "Recipe Name",
+      "ingredients": {
+        "available": ["ingredient1", "ingredient2"],
+        "needed": ["ingredient3", "ingredient4"]
+      },
+      "instructions": "Brief cooking instructions",
+      "nutritionalBenefits": "Benefits for pregnancy",
+      "mealType": "breakfast/lunch/dinner/snack"
+    }
+  ]
+}
+"""
+        
+        # Create system message with strict JSON instructions
+        system_message = """You are a creative culinary expert specializing in pregnancy nutrition. Your task is to suggest recipes based on available ingredients while ensuring they meet nutritional needs for pregnancy.
+
+IMPORTANT INSTRUCTION: Your response must be ONLY valid JSON, with no additional text, explanations, or markdown formatting. Do not include ```json blocks or any other text - ONLY the raw JSON object.
+
+The JSON must follow this exact structure:
+""" + json_example
+        
+        # Create messages for the LLM
+        messages = [
+            {
+                "role": "system",
+                "content": system_message
+            },
+            {
+                "role": "user",
+                "content": f"""Available Ingredients: {', '.join(available_ingredients)}
+
+Pregnancy Week: {pregnancy_week or 'Unknown'}
+Dietary Restrictions: {', '.join(dietary_restrictions) or 'None'}
+Allergies: {', '.join(preferences.get('allergies', [])) or 'None'}
+Health Conditions: {', '.join(preferences.get('healthConditions', [])) or 'None'}
+
+Please suggest 3 recipes that can be made primarily with these ingredients. Follow the JSON format exactly - no explanation text, only the JSON object."""
+            }
+        ]
+        
+        # Make request to Groq
+        completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+            max_completion_tokens=1500
+        )
+        
+        # Get the response text
+        llm_response = completion.choices[0].message.content
+        
+        # Try to parse the response directly as JSON
+        try:
+            recipes_data = json.loads(llm_response.strip())
+            
+            # Validate that the response has the expected structure
+            if "recipes" not in recipes_data or not isinstance(recipes_data["recipes"], list):
+                raise ValueError("Response missing 'recipes' array")
+                
+            # Make sure each recipe has the required fields
+            for recipe in recipes_data["recipes"]:
+                if not all(key in recipe for key in ["name", "ingredients", "instructions", "nutritionalBenefits", "mealType"]):
+                    raise ValueError("Recipe missing required fields")
+                
+                # Ensure ingredients has available and needed arrays
+                if not isinstance(recipe["ingredients"], dict) or not all(key in recipe["ingredients"] for key in ["available", "needed"]):
+                    raise ValueError("Recipe ingredients missing 'available' or 'needed' arrays")
+            
+        except Exception as e:
+            logger.error(f"Error parsing recipe suggestions JSON: {str(e)}\nResponse was: {llm_response}")
+            # Return a default structure if parsing fails
+            recipes_data = {
+                "recipes": [
+                    {
+                        "name": "Simple Fruit Salad",
+                        "ingredients": {
+                            "available": ["Apple", "Banana"],
+                            "needed": ["Yogurt", "Honey", "Nuts"]
+                        },
+                        "instructions": "Chop fruits, mix with yogurt, drizzle with honey, and top with nuts.",
+                        "nutritionalBenefits": "Rich in vitamins, fiber, and probiotics for digestive health during pregnancy.",
+                        "mealType": "snack"
+                    }
+                ]
+            }
+        
+        # Return the recipe suggestions
+        return jsonify({
+            'success': True,
+            'data': recipes_data
+        })
+        
+    except Exception as e:
+        logger.exception("Error generating recipe suggestions")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

@@ -1,26 +1,41 @@
 // src/screens/pregnancy/DietScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image
+  Image,
+  Animated
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DietPlanner from '../../components/pregnancy/DietPlanner';
+import FoodScanner from '../../components/pregnancy/FoodScanner';
 
 const DietScreen = ({ navigation, route }) => {
   const [waterIntake, setWaterIntake] = useState(0);
   const [pregnancyWeek, setPregnancyWeek] = useState(null);
   const [waterTarget] = useState(2500); // Target in ml (about 8-10 glasses)
+  const [dietPreferences, setDietPreferences] = useState({});
+  const [activeTab, setActiveTab] = useState('mealplanner');
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   
   // Load saved data on component mount
   useEffect(() => {
     loadData();
     fetchPregnancyWeek();
+    fetchDietPreferences();
+    
+    // Animate content in
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true
+    }).start();
   }, []);
   
   // Load water intake from storage
@@ -45,6 +60,18 @@ const DietScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       console.error('Error fetching pregnancy week:', error);
+    }
+  };
+  
+  // Fetch diet preferences
+  const fetchDietPreferences = async () => {
+    try {
+      const preferences = await AsyncStorage.getItem('diet_preferences');
+      if (preferences) {
+        setDietPreferences(JSON.parse(preferences));
+      }
+    } catch (error) {
+      console.error('Error fetching diet preferences:', error);
     }
   };
   
@@ -73,83 +100,149 @@ const DietScreen = ({ navigation, route }) => {
   // Calculate water intake percentage
   const waterPercentage = (waterIntake / waterTarget) * 100;
   
-  return (
-    <View style={styles.container}>
-      <ScrollView stickyHeaderIndices={[0]}>
-        {/* Header */}
-        <View style={styles.headerContainer}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Nutrition</Text>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('Home')}
-              style={styles.backButton}
-            >
-              <Ionicons name="arrow-back" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
+  // Render Water Tracker component
+  const WaterTracker = () => (
+    <View style={styles.waterTracker}>
+      <View style={styles.waterHeader}>
+        <Text style={styles.waterTitle}>Daily Water Intake</Text>
+        <TouchableOpacity onPress={resetWater}>
+          <Text style={styles.resetText}>Reset</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+          <View 
+            style={[
+              styles.progressFill, 
+              { width: `${Math.min(waterPercentage, 100)}%` }
+            ]}
+          />
         </View>
+        <Text style={styles.progressText}>
+          {waterIntake} / {waterTarget} ml
+        </Text>
+      </View>
+      
+      <View style={styles.waterInfo}>
+        <Ionicons name="information-circle-outline" size={18} color="#666" />
+        <Text style={styles.waterInfoText}>
+          Staying hydrated is essential during pregnancy. Aim for 8-10 glasses daily.
+        </Text>
+      </View>
+      
+      <View style={styles.waterButtons}>
+        <TouchableOpacity 
+          style={styles.waterButton}
+          onPress={() => addWater(250)}
+        >
+          <Ionicons name="water-outline" size={18} color="#558B2F" />
+          <Text style={styles.waterButtonText}>250ml</Text>
+        </TouchableOpacity>
         
-        {/* Water Tracker */}
-        <View style={styles.waterTracker}>
-          <View style={styles.waterHeader}>
-            <Text style={styles.waterTitle}>Daily Water Intake</Text>
-            <TouchableOpacity onPress={resetWater}>
-              <Text style={styles.resetText}>Reset</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { width: `${Math.min(waterPercentage, 100)}%` }
-                ]}
-              />
-            </View>
-            <Text style={styles.progressText}>
-              {waterIntake} / {waterTarget} ml
-            </Text>
-          </View>
-          
-          <View style={styles.waterInfo}>
-            <Ionicons name="information-circle-outline" size={18} color="#666" />
-            <Text style={styles.waterInfoText}>
-              Staying hydrated is essential during pregnancy. Aim for 8-10 glasses daily.
-            </Text>
-          </View>
-          
-          <View style={styles.waterButtons}>
-            <TouchableOpacity 
-              style={styles.waterButton}
-              onPress={() => addWater(250)}
-            >
-              <Ionicons name="water-outline" size={18} color="#558B2F" />
-              <Text style={styles.waterButtonText}>250ml</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.waterButton}
-              onPress={() => addWater(500)}
-            >
-              <Ionicons name="water-outline" size={18} color="#558B2F" />
-              <Text style={styles.waterButtonText}>500ml</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.waterButton}
-              onPress={() => addWater(1000)}
-            >
-              <Ionicons name="water" size={18} color="#558B2F" />
-              <Text style={styles.waterButtonText}>1000ml</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <TouchableOpacity 
+          style={styles.waterButton}
+          onPress={() => addWater(500)}
+        >
+          <Ionicons name="water-outline" size={18} color="#558B2F" />
+          <Text style={styles.waterButtonText}>500ml</Text>
+        </TouchableOpacity>
         
-        {/* Diet Planner */}
-        <DietPlanner pregnancyWeek={pregnancyWeek} navigation={navigation} />
-      </ScrollView>
+        <TouchableOpacity 
+          style={styles.waterButton}
+          onPress={() => addWater(1000)}
+        >
+          <Ionicons name="water" size={18} color="#558B2F" />
+          <Text style={styles.waterButtonText}>1000ml</Text>
+        </TouchableOpacity>
+      </View>
     </View>
+  );
+  
+  // Custom Tab Bar
+  const CustomTabBar = () => (
+    <View style={styles.tabBar}>
+      <TouchableOpacity 
+        style={[
+          styles.tabButton, 
+          activeTab === 'mealplanner' && styles.activeTab
+        ]}
+        onPress={() => setActiveTab('mealplanner')}
+      >
+        <Ionicons 
+          name="restaurant-outline" 
+          size={20} 
+          color={activeTab === 'mealplanner' ? '#558B2F' : '#999'} 
+        />
+        <Text 
+          style={[
+            styles.tabLabel,
+            activeTab === 'mealplanner' && styles.activeTabLabel
+          ]}
+        >
+          Meal Plans
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={[
+          styles.tabButton, 
+          activeTab === 'foodscanner' && styles.activeTab
+        ]}
+        onPress={() => setActiveTab('foodscanner')}
+      >
+        <Ionicons 
+          name="scan-outline" 
+          size={20} 
+          color={activeTab === 'foodscanner' ? '#558B2F' : '#999'} 
+        />
+        <Text 
+          style={[
+            styles.tabLabel,
+            activeTab === 'foodscanner' && styles.activeTabLabel
+          ]}
+        >
+          Food Scanner
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
+  return (
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Nutrition</Text>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('Home')}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {/* Custom Tab Bar */}
+      <CustomTabBar />
+      
+      {/* Content */}
+      <ScrollView style={styles.content}>
+        {/* Water Tracker */}
+        <WaterTracker />
+        
+        {/* Tab Content */}
+        {activeTab === 'mealplanner' ? (
+          <DietPlanner pregnancyWeek={pregnancyWeek} navigation={navigation} />
+        ) : (
+          <FoodScanner 
+            pregnancyWeek={pregnancyWeek} 
+            navigation={navigation} 
+            dietPreferences={dietPreferences}
+          />
+        )}
+      </ScrollView>
+    </Animated.View>
   );
 };
 
@@ -176,6 +269,37 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 5,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    height: 56,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#558B2F',
+  },
+  tabLabel: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#999',
+    fontWeight: '500',
+  },
+  activeTabLabel: {
+    color: '#558B2F',
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
   },
   waterTracker: {
     margin: 15,
