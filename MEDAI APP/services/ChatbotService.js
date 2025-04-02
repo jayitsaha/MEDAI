@@ -2,7 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Your Flask server API endpoint
-const API_BASE_URL = 'http://192.168.1.11:5001/api'
+const API_BASE_URL = 'http://192.168.255.82:5001/api'
 
 // Get chat history from AsyncStorage
 const getChatHistory = async () => {

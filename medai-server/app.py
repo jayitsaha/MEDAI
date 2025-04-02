@@ -5,6 +5,7 @@ import os
 import uuid
 import base64
 import logging
+import re  # Added for JSON extraction from LLM responses
 from werkzeug.utils import secure_filename
 import json
 import time
@@ -413,6 +414,431 @@ def medication_info():
         })
     except Exception as e:
         logger.exception("Error retrieving medication info")
+        return jsonify({'error': str(e)}), 500
+
+# New Diet Endpoints
+
+@app.route('/api/diet/meal-plan', methods=['POST'])
+def generate_meal_plan():
+    """Generate personalized meal plan for pregnant women using Grok."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        # Extract user preferences
+        preferences = data.get('preferences', {})
+        pregnancy_week = data.get('pregnancyWeek')
+        
+        # Format user preferences for the LLM
+        dietary_restrictions = []
+        if preferences.get('isVegetarian'):
+            dietary_restrictions.append('Vegetarian')
+        if preferences.get('isVegan'):
+            dietary_restrictions.append('Vegan')
+        if preferences.get('isGlutenFree'):
+            dietary_restrictions.append('Gluten-Free')
+        if preferences.get('isDairyFree'):
+            dietary_restrictions.append('Dairy-Free')
+            
+        user_prefs_text = f"""
+            Pregnancy Week: {pregnancy_week or 'Unknown'}
+            Preferred Cuisines: {', '.join(preferences.get('cuisines', [])) or 'No specific preferences'}
+            Allergies: {', '.join(preferences.get('allergies', [])) or 'None'}
+            Health Conditions: {', '.join(preferences.get('healthConditions', [])) or 'None'}
+            Dietary Restrictions: {', '.join(dietary_restrictions) or 'None'}
+            Daily Calorie Goal: {preferences.get('calorieGoal', '2000')} calories
+            Daily Protein Goal: {preferences.get('proteinGoal', '70')} grams
+        """
+
+        # Provide exact JSON structure format in the prompt
+        json_example = """
+        {
+          "breakfast": [
+            {
+              "name": "Recipe Name",
+              "ingredients": ["ingredient 1", "ingredient 2"],
+              "instructions": "Step by step instructions",
+              "calories": 320,
+              "protein": "15g",
+              "carbs": "40g",
+              "fat": "10g",
+              "nutrients": ["nutrient 1", "nutrient 2"],
+              "pregnancyBenefits": "Benefits description"
+            }
+          ],
+          "lunch": [
+            {
+              "name": "Recipe Name",
+              "ingredients": ["ingredient 1", "ingredient 2"],
+              "instructions": "Step by step instructions",
+              "calories": 380,
+              "protein": "22g",
+              "carbs": "45g",
+              "fat": "12g",
+              "nutrients": ["nutrient 1", "nutrient 2"],
+              "pregnancyBenefits": "Benefits description"
+            }
+          ],
+          "dinner": [
+            {
+              "name": "Recipe Name",
+              "ingredients": ["ingredient 1", "ingredient 2"],
+              "instructions": "Step by step instructions",
+              "calories": 450,
+              "protein": "30g",
+              "carbs": "50g",
+              "fat": "15g",
+              "nutrients": ["nutrient 1", "nutrient 2"],
+              "pregnancyBenefits": "Benefits description"
+            }
+          ],
+          "snacks": [
+            {
+              "name": "Recipe Name",
+              "ingredients": ["ingredient 1", "ingredient 2"],
+              "instructions": "Step by step instructions",
+              "calories": 150,
+              "protein": "5g",
+              "carbs": "20g",
+              "fat": "5g",
+              "nutrients": ["nutrient 1", "nutrient 2"],
+              "pregnancyBenefits": "Benefits description"
+            }
+          ]
+        }
+        """
+
+        # Create the prompt for the LLM
+        messages = [
+            {
+                "role": "system",
+                "content": """You are a knowledgeable nutrition expert specializing in prenatal diet. Your task is to create a personalized meal plan that is safe and nutritious for pregnant women, accounting for their specific week of pregnancy, food preferences, allergies, and health conditions. Provide detailed recipes with nutritional information.
+                
+                Your response MUST be valid JSON following the exact structure of the example provided by the user, with no extra text before or after the JSON. Include only one meal for each category (breakfast, lunch, dinner, and two items in snacks)."""
+            },
+            {
+                "role": "user",
+                "content": f"""Please create a one-day meal plan based on these preferences:
+                
+                {user_prefs_text}
+                
+                Return your response as JSON with exactly this structure:
+                
+                {json_example}
+                
+                Follow this structure precisely and include only ONE item in each of the breakfast, lunch, and dinner arrays, and TWO items in the snacks array. Make sure all string values use double quotes, not single quotes, to ensure valid JSON.
+                
+                Make sure to include the "ingredients" as an array of strings, and make each meal nutritious and appropriate for pregnancy.
+                """
+            }
+        ]
+
+        # Make request to Groq
+        completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+            max_completion_tokens=1500
+        )
+        
+        # Get the response text
+        llm_response = completion.choices[0].message.content
+        
+        # Try to extract JSON from the response
+        try:
+            # First try to find JSON between code blocks
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_response)
+            if json_match:
+                json_str = json_match.group(1).strip()
+                meal_plan_data = json.loads(json_str)
+            else:
+                # If that fails, try to extract any JSON object
+                json_match = re.search(r'({[\s\S]*})', llm_response)
+                if json_match:
+                    json_str = json_match.group(1).strip()
+                    meal_plan_data = json.loads(json_str)
+                else:
+                    # If all else fails, just try to parse the whole response
+                    meal_plan_data = json.loads(llm_response.strip())
+            
+            # Validate the structure has the expected keys
+            expected_keys = ['breakfast', 'lunch', 'dinner', 'snacks']
+            for key in expected_keys:
+                if key not in meal_plan_data:
+                    meal_plan_data[key] = []
+            
+            # Ensure each section has at least one item with required fields
+            for key in expected_keys:
+                if not meal_plan_data[key] or not isinstance(meal_plan_data[key], list):
+                    meal_plan_data[key] = []
+                
+                # Ensure all meals have the required fields
+                for i, meal in enumerate(meal_plan_data[key]):
+                    if not isinstance(meal, dict):
+                        meal_plan_data[key][i] = {
+                            "name": "Invalid meal",
+                            "ingredients": ["Please try again"],
+                            "instructions": "There was an error generating this meal.",
+                            "calories": 0,
+                            "protein": "0g",
+                            "carbs": "0g",
+                            "fat": "0g",
+                            "nutrients": []
+                        }
+                        continue
+                    
+                    # Ensure required fields exist
+                    required_fields = {
+                        "name": "Recipe",
+                        "ingredients": [],
+                        "instructions": "Instructions not provided",
+                        "calories": 0,
+                        "protein": "0g",
+                        "carbs": "0g",
+                        "fat": "0g",
+                        "nutrients": []
+                    }
+                    
+                    for field, default in required_fields.items():
+                        if field not in meal or meal[field] is None:
+                            meal[field] = default
+                    
+                    # Ensure ingredients is an array
+                    if not isinstance(meal["ingredients"], list):
+                        if isinstance(meal["ingredients"], str):
+                            meal["ingredients"] = [meal["ingredients"]]
+                        else:
+                            meal["ingredients"] = []
+                    
+                    # Ensure nutrients is an array
+                    if not isinstance(meal["nutrients"], list):
+                        if isinstance(meal["nutrients"], str):
+                            meal["nutrients"] = [meal["nutrients"]]
+                        else:
+                            meal["nutrients"] = []
+            
+        except Exception as e:
+            logger.error(f"Error parsing meal plan JSON: {str(e)}\nResponse was: {llm_response}")
+            # Create a default meal plan structure if parsing fails
+            meal_plan_data = {
+                "breakfast": [{
+                    "name": "Simple Oatmeal with Berries",
+                    "ingredients": ["Rolled oats", "Milk", "Mixed berries", "Honey"],
+                    "instructions": "Cook oats with milk, top with berries and honey.",
+                    "calories": 300,
+                    "protein": "10g",
+                    "carbs": "45g",
+                    "fat": "5g",
+                    "nutrients": ["Fiber", "Iron", "B Vitamins"],
+                    "pregnancyBenefits": "Provides steady energy and essential nutrients for pregnancy."
+                }],
+                "lunch": [{
+                    "name": "Spinach and Chickpea Salad",
+                    "ingredients": ["Fresh spinach", "Chickpeas", "Cherry tomatoes", "Olive oil", "Lemon juice"],
+                    "instructions": "Combine ingredients in a bowl and toss with olive oil and lemon juice.",
+                    "calories": 350,
+                    "protein": "15g",
+                    "carbs": "40g",
+                    "fat": "12g",
+                    "nutrients": ["Folate", "Iron", "Protein"],
+                    "pregnancyBenefits": "Rich in folate for neural tube development."
+                }],
+                "dinner": [{
+                    "name": "Baked Salmon with Sweet Potato",
+                    "ingredients": ["Salmon fillet", "Sweet potato", "Broccoli", "Olive oil", "Lemon"],
+                    "instructions": "Bake salmon and sweet potato. Steam broccoli as a side.",
+                    "calories": 420,
+                    "protein": "28g",
+                    "carbs": "35g",
+                    "fat": "18g",
+                    "nutrients": ["Omega-3", "Vitamin A", "Protein"],
+                    "pregnancyBenefits": "Omega-3 fatty acids support brain development."
+                }],
+                "snacks": [
+                    {
+                        "name": "Greek Yogurt with Honey",
+                        "ingredients": ["Greek yogurt", "Honey", "Almonds"],
+                        "instructions": "Top yogurt with honey and chopped almonds.",
+                        "calories": 180,
+                        "protein": "15g",
+                        "carbs": "15g",
+                        "fat": "8g",
+                        "nutrients": ["Calcium", "Protein", "Probiotics"],
+                        "pregnancyBenefits": "Calcium supports bone development."
+                    },
+                    {
+                        "name": "Apple with Nut Butter",
+                        "ingredients": ["Apple", "Almond butter"],
+                        "instructions": "Slice apple and serve with almond butter for dipping.",
+                        "calories": 200,
+                        "protein": "5g",
+                        "carbs": "25g",
+                        "fat": "10g",
+                        "nutrients": ["Fiber", "Vitamin C", "Healthy fats"],
+                        "pregnancyBenefits": "Provides steady energy between meals."
+                    }
+                ]
+            }
+        
+        # Return the meal plan
+        return jsonify({
+            'success': True,
+            'data': meal_plan_data
+        })
+        
+    except Exception as e:
+        logger.exception("Error generating meal plan")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/diet/nutrition-tips', methods=['GET'])
+def get_nutrition_tips():
+    """Get pregnancy-specific nutrition tips based on pregnancy week."""
+    try:
+        pregnancy_week = request.args.get('week')
+        
+        # Define expected JSON structure in the prompt
+        json_example = """
+        [
+            {
+                "title": "Tip Title",
+                "content": "Detailed content about the nutrition tip with practical advice."
+            },
+            {
+                "title": "Another Tip Title",
+                "content": "More detailed content about another nutrition aspect."
+            },
+            {
+                "title": "Third Tip Title",
+                "content": "Further detailed content about another important nutrition aspect."
+            }
+        ]
+        """
+        
+        # Create the prompt for the LLM
+        messages = [
+            {
+                "role": "system",
+                "content": """You are a prenatal nutrition expert. Provide concise, evidence-based nutrition tips specifically tailored for pregnant women.
+                
+                Your response MUST be valid JSON following the exact structure of the example provided by the user, with no extra text before or after the JSON. Include exactly three nutrition tips."""
+            },
+            {
+                "role": "user",
+                "content": f"""Provide 3 important nutrition tips for a woman in week {pregnancy_week or 'unknown'} of pregnancy. 
+
+Each tip should:
+1. Have a clear, concise title highlighting the nutrient or concept
+2. Include detailed content (30-80 words) with practical advice
+3. Be evidence-based and specifically relevant to week {pregnancy_week or 'unknown'} of pregnancy
+
+Return your response as JSON with exactly this structure:
+
+{json_example}
+
+Follow this structure precisely. Make sure all string values use double quotes, not single quotes, to ensure valid JSON.
+"""
+            }
+        ]
+
+        # Make request to Groq
+        completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+            max_completion_tokens=800
+        )
+        
+        # Get the response text
+        llm_response = completion.choices[0].message.content
+        
+        # Try to extract JSON from the response
+        try:
+            # First try to find JSON between code blocks
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_response)
+            if json_match:
+                json_str = json_match.group(1).strip()
+                tips_data = json.loads(json_str)
+            else:
+                # If that fails, try to extract any JSON array
+                json_match = re.search(r'(\[[\s\S]*?\])', llm_response)
+                if json_match:
+                    json_str = json_match.group(1).strip()
+                    tips_data = json.loads(json_str)
+                else:
+                    # If all else fails, just try to parse the whole response
+                    tips_data = json.loads(llm_response.strip())
+            
+            # Validate that we have an array
+            if not isinstance(tips_data, list):
+                raise ValueError("Response is not a list")
+                
+            # Ensure we have exactly 3 tips
+            while len(tips_data) < 3:
+                # Add default tips if we have fewer than 3
+                default_tips = [
+                    {
+                        "title": "Folate for Brain Development",
+                        "content": "Consuming adequate folate helps prevent neural tube defects. Include leafy greens, fortified cereals, and beans in your diet."
+                    },
+                    {
+                        "title": "Hydration is Key",
+                        "content": "Staying well-hydrated supports amniotic fluid levels and helps prevent common issues like constipation and urinary tract infections."
+                    },
+                    {
+                        "title": "Iron for Oxygen Transport",
+                        "content": "Iron needs increase during pregnancy to support additional blood volume and oxygen transport to your baby."
+                    }
+                ]
+                
+                tips_data.append(default_tips[len(tips_data) % 3])
+                
+            # Trim to exactly 3 tips
+            tips_data = tips_data[:3]
+            
+            # Validate each tip has required fields
+            for i, tip in enumerate(tips_data):
+                if not isinstance(tip, dict) or 'title' not in tip or 'content' not in tip:
+                    # Replace invalid tip with a default one
+                    tips_data[i] = {
+                        "title": f"Nutrition Tip {i+1}",
+                        "content": "Important nutrients during pregnancy include folate, iron, calcium, and omega-3 fatty acids."
+                    }
+                    
+                # Ensure the fields are strings
+                if not isinstance(tip.get('title'), str):
+                    tip['title'] = str(tip.get('title', f"Nutrition Tip {i+1}"))
+                    
+                if not isinstance(tip.get('content'), str):
+                    tip['content'] = str(tip.get('content', "Important nutrients during pregnancy include folate, iron, calcium, and omega-3 fatty acids."))
+                
+        except Exception as e:
+            logger.error(f"Error parsing nutrition tips JSON: {str(e)}\nResponse was: {llm_response}")
+            # Default tips if parsing fails
+            tips_data = [
+                {
+                    "title": "Folate for Brain Development",
+                    "content": "Consuming adequate folate helps prevent neural tube defects. Include leafy greens, fortified cereals, and beans in your diet."
+                },
+                {
+                    "title": "Hydration is Key",
+                    "content": "Staying well-hydrated supports amniotic fluid levels and helps prevent common issues like constipation and urinary tract infections."
+                },
+                {
+                    "title": "Iron for Oxygen Transport",
+                    "content": "Iron needs increase during pregnancy to support additional blood volume and oxygen transport to your baby."
+                }
+            ]
+        
+        # Return the tips
+        return jsonify({
+            'success': True,
+            'data': tips_data
+        })
+        
+    except Exception as e:
+        logger.exception("Error generating nutrition tips")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
