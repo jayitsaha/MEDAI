@@ -1,58 +1,8 @@
 // src/services/ChatbotService.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API base URL - update this to your Flask server address
-const API_URL = 'http://192.168.255.82:5001/api';
-
-// Get response from the pregnancy chatbot
-const getPregnancyResponse = async (message, pregnancyWeek = null) => {
-  try {
-    // Get chat history from AsyncStorage
-    const chatHistory = await getChatHistory();
-    
-    // Call the chatbot API
-    const response = await fetch(`${API_URL}/chatbot/pregnancy`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message,
-        week: pregnancyWeek,
-        history: chatHistory.slice(-10) // Send last 10 messages for context
-      })
-    });
-    
-    const result = await response.json();
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to get response');
-    }
-    
-    // Add new messages to chat history
-    const userMessage = {
-      id: Date.now().toString(),
-      text: message,
-      sender: 'user',
-      timestamp: new Date().toISOString()
-    };
-    
-    const botMessage = {
-      id: (Date.now() + 1).toString(),
-      text: result.response,
-      sender: 'bot',
-      timestamp: new Date().toISOString()
-    };
-    
-    await addMessageToHistory(userMessage);
-    await addMessageToHistory(botMessage);
-    
-    return result.response;
-  } catch (error) {
-    console.error('Error getting chatbot response:', error);
-    throw error;
-  }
-};
+// Your Flask server API endpoint
+const API_BASE_URL = 'http://192.168.1.11:5001/api'
 
 // Get chat history from AsyncStorage
 const getChatHistory = async () => {
@@ -71,8 +21,23 @@ const addMessageToHistory = async (message) => {
     const history = await getChatHistory();
     history.push(message);
     await AsyncStorage.setItem('chat_history', JSON.stringify(history));
+    return message;
   } catch (error) {
     console.error('Error adding message to history:', error);
+    throw error;
+  }
+};
+
+// Update a message in chat history
+const updateMessageInHistory = async (messageId, newText) => {
+  try {
+    const history = await getChatHistory();
+    const updatedHistory = history.map(msg => 
+      msg.id === messageId ? { ...msg, text: newText } : msg
+    );
+    await AsyncStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+  } catch (error) {
+    console.error('Error updating message in history:', error);
   }
 };
 
@@ -80,13 +45,99 @@ const addMessageToHistory = async (message) => {
 const clearChatHistory = async () => {
   try {
     await AsyncStorage.removeItem('chat_history');
+    return true;
   } catch (error) {
     console.error('Error clearing chat history:', error);
+    return false;
+  }
+};
+
+// Get non-streaming response from Groq API
+const getResponse = async (userMessage, onComplete, onError) => {
+  try {
+    // First create and save user message
+    const userMessageObj = {
+      id: Date.now().toString(),
+      text: userMessage,
+      sender: 'user',
+      timestamp: new Date().toISOString(),
+
+    };
+    console.log(userMessageObj)
+    await addMessageToHistory(userMessageObj);
+    
+    // Create loading bot message
+    const botMessageObj = {
+      id: (Date.now() + 1).toString(),
+      text: 'Thinking...',
+      sender: 'bot',
+      timestamp: new Date().toISOString(),
+    };
+    await addMessageToHistory(botMessageObj);
+    
+    // Get recent chat history for context
+    const chatHistory = await getChatHistory();
+    const recentHistory = chatHistory.slice(-10); // Last 10 messages
+    
+    // Format history for Groq API
+    const formattedHistory = recentHistory.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.text
+    }));
+    
+    // Make the fetch request without streaming
+    const response = await fetch(`${API_BASE_URL}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful pregnancy assistant providing accurate medical information to expectant mothers. Always advise users to consult healthcare providers for personalized medical advice. Be empathetic, clear, and concise.'
+          },
+          ...formattedHistory.slice(0, -2), // Exclude the last user message and loading bot message
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ],
+        model: 'llama-3.3-70b-versatile',
+        stream: false, // Disable streaming
+        temperature: 0.7,
+        max_completion_tokens: 1024,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}`);
+    }
+    
+    // Parse the response JSON
+    const responseData = await response.json();
+    const botResponse = responseData.choices?.[0]?.message?.content || 
+                        responseData.choices?.[0]?.content || 
+                        "I'm sorry, I couldn't generate a response.";
+    
+    // Update the bot message with the complete response
+    await updateMessageInHistory(botMessageObj.id, botResponse);
+    
+    // Notify caller with complete response
+    if (onComplete) onComplete(botMessageObj.id, botResponse);
+    
+    return botMessageObj.id;
+  } catch (error) {
+    console.error('Error getting response:', error);
+    if (onError) onError(error);
+    throw error;
   }
 };
 
 export default {
-  getPregnancyResponse,
   getChatHistory,
-  clearChatHistory
+  addMessageToHistory,
+  updateMessageInHistory,
+  clearChatHistory,
+  getResponse, // Renamed from getStreamingResponse
 };

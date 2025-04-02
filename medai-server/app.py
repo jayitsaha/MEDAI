@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+#/app.py
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import os
 import uuid
@@ -7,6 +8,8 @@ import logging
 from werkzeug.utils import secure_filename
 import json
 import time
+from dotenv import load_dotenv
+from groq import Groq
 
 # Import AI modules
 from ai.ocr import process_prescription_image, identify_medication
@@ -14,9 +17,15 @@ from ai.chatbot import get_pregnancy_response
 from ai.fall_detection import analyze_accelerometer_data
 from ai.grok_vision import GroqVision
 
+# Load environment variables
+load_dotenv()
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
+
+# Initialize Groq client
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", "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"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -172,51 +181,6 @@ def scan_medicine():
         logger.exception("Error scanning medicine")
         return jsonify({'error': str(e)}), 500
 
-# @app.route('/api/ocr/medicine', methods=['POST'])
-# def scan_medicine():
-#     """Identify a medication from an image."""
-#     try:
-#         if 'image' not in request.json:
-#             return jsonify({'error': 'No image provided'}), 400
-            
-#         image_base64 = request.json['image']
-#         image_path = save_base64_image(image_base64, "medicine")
-        
-#         if not image_path:
-#             return jsonify({'error': 'Failed to save image'}), 500
-            
-#         # Identify the medication in the image
-#         medication_info = identify_medication(image_path)
-        
-#         # Check for prescription match if prescriptionId is provided
-#         if 'prescriptionData' in request.json:
-#             try:
-#                 prescription_data = request.json['prescriptionData']
-                
-#                 # Simplified validation: check if medication name is in prescription
-#                 medication_name = medication_info.get('name', '').lower()
-#                 medicines_in_prescription = [med.get('name', '').lower() for med in prescription_data.get('medicines', [])]
-                
-#                 medication_info['matchesPrescription'] = medication_name in medicines_in_prescription
-#             except:
-#                 medication_info['matchesPrescription'] = False
-#         else:
-#             medication_info['matchesPrescription'] = True  # Default if no prescription provided
-        
-#         # Clean up the image file
-#         try:
-#             os.remove(image_path)
-#         except:
-#             pass
-        
-#         return jsonify({
-#             'success': True,
-#             'data': medication_info
-#         })
-#     except Exception as e:
-#         logger.exception("Error scanning medicine")
-#         return jsonify({'error': str(e)}), 500
-
 @app.route('/api/chatbot/pregnancy', methods=['POST'])
 def pregnancy_chatbot():
     """Get responses from the pregnancy assistant chatbot."""
@@ -229,17 +193,173 @@ def pregnancy_chatbot():
         pregnancy_week = data.get('week')
         chat_history = data.get('history', [])
         
-        # Get response from the chatbot AI
-        response = get_pregnancy_response(user_message, pregnancy_week, chat_history)
-        
-        return jsonify({
-            'success': True,
-            'response': response
-        })
+        # Check if streaming is requested
+        if data.get('stream', False):
+            return stream_pregnancy_response(user_message, pregnancy_week, chat_history)
+        else:
+            # Use the existing non-streaming implementation
+            response = get_pregnancy_response(user_message, pregnancy_week, chat_history)
+            
+            return jsonify({
+                'success': True,
+                'response': response
+            })
     except Exception as e:
         logger.exception("Error getting chatbot response")
         return jsonify({'error': str(e)}), 500
 
+def stream_pregnancy_response(user_message, pregnancy_week=None, chat_history=None):
+    """Stream responses from the pregnancy assistant using Groq's Llama model."""
+    try:
+        # Format history for Groq API
+        formatted_history = []
+        
+        # Add system message
+        formatted_history.append({
+            "role": "system",
+            "content": "You are a helpful pregnancy assistant providing accurate medical information to expectant mothers. "
+                      "Always advise users to consult healthcare providers for personalized medical advice. "
+                      "Be empathetic, clear, and concise."
+        })
+        
+        # Add chat history if available
+        if chat_history and isinstance(chat_history, list):
+            for msg in chat_history[-10:]:  # Use last 10 messages for context
+                role = "user" if msg.get('sender') == 'user' else "assistant"
+                formatted_history.append({
+                    "role": role,
+                    "content": msg.get('text', '')
+                })
+        
+        # Add pregnancy week context if available
+        context = ""
+        if pregnancy_week:
+            context = f"The user is currently in week {pregnancy_week} of pregnancy. "
+        
+        # Add the current user message
+        formatted_history.append({
+            "role": "user",
+            "content": f"{context}{user_message}"
+        })
+
+        def generate():
+            
+            try:
+                print(formatted_history)
+                # Create streaming completion with Groq
+                stream = groq_client.chat.completions.create(
+                    messages=formatted_history,
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.7,
+                    max_completion_tokens=1024,
+                    stream=True
+                )
+                
+                # Process the stream
+                for chunk in stream:
+                    # Format as SSE data
+                    sse_data = f"data: {json.dumps(chunk.model_dump())}\n\n"
+                    yield sse_data
+                    
+                # Signal the end of the stream
+                yield "data: [DONE]\n\n"
+                
+            except Exception as e:
+                # Handle errors during streaming
+                error_data = json.dumps({"error": str(e)})
+                yield f"data: {error_data}\n\n"
+                logger.exception("Error in streaming response")
+        
+        # Return streaming response
+        return Response(
+            generate(),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no'  # Disable nginx buffering if using nginx
+            }
+        )
+    except Exception as e:
+        logger.exception("Error setting up streaming response")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """General purpose chat endpoint using Groq's Llama model with streaming support."""
+    try:
+        # Get request data
+        data = request.json
+        
+        if not data or 'messages' not in data or not isinstance(data['messages'], list):
+            return jsonify({"error": "Invalid messages format"}), 400
+        
+        # Extract parameters with defaults
+        messages = data['messages']
+        model = data.get('model', "llama-3.3-70b-versatile")
+        temperature = data.get('temperature', 0.7)
+        max_completion_tokens = data.get('max_completion_tokens', 1024)
+        streaming = data.get('stream', False)  # Check if streaming is requested
+        
+        # Handle streaming request
+        if streaming:
+            def generate():
+                """Generator function for streaming the response"""
+                try:
+                    # Create streaming completion with Groq
+                    stream = groq_client.chat.completions.create(
+                        messages=messages,
+                        model=model,
+                        temperature=temperature,
+                        max_completion_tokens=max_completion_tokens,
+                        stream=True  # Enable streaming
+                    )
+                    
+                    # Process the stream
+                    for chunk in stream:
+                        # Format as SSE data
+                        sse_data = f"data: {json.dumps(chunk.model_dump())}\n\n"
+                        yield sse_data
+                        
+                    # Signal the end of the stream
+                    yield "data: [DONE]\n\n"
+                    
+                except Exception as e:
+                    # Handle errors during streaming
+                    error_data = json.dumps({"error": str(e)})
+                    yield f"data: {error_data}\n\n"
+                    logger.exception("Error in streaming chat response")
+            
+            # Return streaming response
+            return Response(
+                generate(),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no'  # Disable nginx buffering if using nginx
+                }
+            )
+        
+        # Handle non-streaming request
+        else:
+            # Make non-streaming request to Groq
+            completion = groq_client.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+                stream=False  # Explicitly disable streaming
+            )
+            
+            # Return the complete response
+            return jsonify(completion.model_dump())
+            
+    except Exception as e:
+        # Handle errors
+        logger.exception("Error in chat response")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/api/fall-detection/analyze', methods=['POST'])
 def detect_fall():
     """Analyze accelerometer data to detect falls."""
