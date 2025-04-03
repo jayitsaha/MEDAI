@@ -12,26 +12,37 @@ import {
   ScrollView,
   Animated,
   PermissionsAndroid,
+  SafeAreaView,
+  StatusBar,
+  Dimensions,
+  Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import Voice from '@react-native-voice/voice'; // Import for speech-to-text
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import Voice from '@react-native-voice/voice';
 import ChatbotService from '../../services/ChatbotService';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 
-// Quick questions for easy access
+// Get screen dimensions for responsive design
+const { width, height } = Dimensions.get('window');
+
+// Quick questions for easy access - expanded with more helpful pregnancy questions
 const QUICK_QUESTIONS = [
   'What foods should I avoid?',
-  'Is it safe to exercise?',
-  'When should I call my doctor?',
-  'How to manage morning sickness?',
-  'What prenatal vitamins do I need?',
+  'Safe exercises during pregnancy?',
+  'When to call my doctor?',
+  'Managing morning sickness?',
+  'Prenatal vitamin recommendations?',
+  'Sleep tips for pregnancy?',
+  'Common pregnancy symptoms?',
 ];
 
-// Thinking steps to show in the thinking box
+// Thinking steps to show in the thinking animation
 const THINKING_STEPS = [
   "Analyzing your question...",
   "Retrieving medical information...",
-  "Considering pregnancy context...",
-  "Formulating response..."
+  "Considering your pregnancy stage...",
+  "Formulating detailed response..."
 ];
 
 // Render a complete chat interface for pregnancy assistant
@@ -40,17 +51,20 @@ const ChatbotScreen = () => {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState(null);
+  const [isThinking, setIsThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState(0);
-  const [showThinking, setShowThinking] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState(null);
   const [speechResults, setSpeechResults] = useState([]);
   const [speechError, setSpeechError] = useState('');
   const [voiceVolume, setVoiceVolume] = useState(0);
+  const [quickQuestionsExpanded, setQuickQuestionsExpanded] = useState(false);
   
   const flatListRef = useRef(null);
   const thinkingTimerRef = useRef(null);
   const thinkingOpacity = useRef(new Animated.Value(0)).current;
   const volumeAnimation = useRef(new Animated.Value(0)).current;
+  const quickQuestionsHeight = useRef(new Animated.Value(0)).current;
+  const inputRef = useRef(null);
   
   // Load chat history and initialize voice recognition when component mounts
   useEffect(() => {
@@ -78,7 +92,7 @@ const ChatbotScreen = () => {
         // Add welcome message if no chat history
         const welcomeMessage = {
           id: Date.now().toString(),
-          text: "Hello! I'm your pregnancy assistant. How can I help you today?",
+          text: "Hello! I'm your pregnancy assistant. I'm here to provide evidence-based information and support through your pregnancy journey. How can I help you today?",
           sender: "bot",
           timestamp: new Date().toISOString(),
         };
@@ -94,9 +108,12 @@ const ChatbotScreen = () => {
   // Start the thinking animation and cycle through steps
   const startThinking = () => {
     setThinkingStep(0);
-    setShowThinking(true);
+    setIsThinking(true);
     
-    // Fade in the thinking box
+    // Reset opacity to 0 first to ensure animation starts fresh
+    thinkingOpacity.setValue(0);
+    
+    // Fade in the thinking box with spring animation for more natural feel
     Animated.timing(thinkingOpacity, {
       toValue: 1,
       duration: 300,
@@ -106,7 +123,7 @@ const ChatbotScreen = () => {
     // Cycle through thinking steps
     thinkingTimerRef.current = setInterval(() => {
       setThinkingStep(prev => (prev + 1) % THINKING_STEPS.length);
-    }, 1500);
+    }, 1800);
   };
   
   // Stop the thinking animation
@@ -122,13 +139,34 @@ const ChatbotScreen = () => {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      setShowThinking(false);
+      setIsThinking(false);
     });
+  };
+  
+  // Toggle quick questions expansion
+  const toggleQuickQuestions = () => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    const newValue = !quickQuestionsExpanded;
+    setQuickQuestionsExpanded(newValue);
+    
+    Animated.spring(quickQuestionsHeight, {
+      toValue: newValue ? 110 : 0,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
   };
   
   // Send a message and get simulated streaming response
   const sendMessage = async () => {
     if (inputText.trim() === '' || loading) return;
+    
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     
     const messageText = inputText.trim();
     setInputText('');
@@ -163,10 +201,10 @@ const ChatbotScreen = () => {
       const updatedMessages = await ChatbotService.getChatHistory();
       setMessages(updatedMessages);
       
-      // Simulate random thinking time - makes it feel more natural
-      const thinkingTime = Math.floor(Math.random() * 1500) + 1500; // 1.5-3 seconds
+      // Use a consistent delay before starting the streaming
+      const thinkingTime = Math.floor(Math.random() * 1500) + 1500;
       setTimeout(async () => {
-        // Get simulated streaming response (internally calls the non-streaming API)
+        // Get simulated streaming response
         await ChatbotService.getStreamingResponse(
           messageText,
           // Called for each chunk of the simulated streaming response
@@ -189,15 +227,18 @@ const ChatbotScreen = () => {
           // Called when simulated streaming is complete
           async () => {
             setLoading(false);
-            setStreamingMessageId(null);
-            
-            // Only stop thinking when streaming is complete
-            stopThinking();
             
             // Update the message to remove the streaming flag
             await ChatbotService.updateMessage(botMessageId, { isStreaming: false });
             const finalMessages = await ChatbotService.getChatHistory();
             setMessages(finalMessages);
+            
+            // Only stop thinking and clear streaming ID AFTER everything is updated
+            // This ensures the thinking box remains visible until streaming is truly complete
+            setTimeout(() => {
+              stopThinking();
+              setStreamingMessageId(null);
+            }, 500); // Small delay to ensure smooth transition
           },
           // Called on error
           (error) => {
@@ -233,11 +274,24 @@ const ChatbotScreen = () => {
   
   // Handle quick question selection
   const handleQuickQuestion = (question) => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     setInputText(question);
     // Use setTimeout to ensure the input is updated before sending
     setTimeout(() => {
       sendMessage();
     }, 100);
+    
+    // Collapse quick questions after selection
+    setQuickQuestionsExpanded(false);
+    Animated.spring(quickQuestionsHeight, {
+      toValue: 0,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
   };
   
   // Initialize voice recognition
@@ -277,17 +331,17 @@ const ChatbotScreen = () => {
     setIsListening(true);
     setSpeechError('');
     
-    // Create pulse animation for recording
+    // Create pulse animation for recording with sequential animation
     Animated.loop(
       Animated.sequence([
         Animated.timing(volumeAnimation, {
           toValue: 1,
-          duration: 700,
+          duration: 800,
           useNativeDriver: true,
         }),
         Animated.timing(volumeAnimation, {
           toValue: 0.3,
-          duration: 700,
+          duration: 800,
           useNativeDriver: true,
         }),
       ])
@@ -338,6 +392,10 @@ const ChatbotScreen = () => {
         return stopSpeechToText();
       }
       
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      
       setSpeechResults([]);
       await Voice.start('en-US');
     } catch (error) {
@@ -360,26 +418,61 @@ const ChatbotScreen = () => {
     }
   };
   
+  // Format timestamp for messages
+  const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
   // Render a chat message
   const renderMessage = ({ item, index }) => {
     const isUser = item.sender === 'user';
     const isStreaming = item.id === streamingMessageId;
+    const showDate = index === 0 || 
+      new Date(item.timestamp).toDateString() !== 
+      new Date(messages[index - 1].timestamp).toDateString();
     
-    // Create a compound view with thinking box + message if this is the streaming message
     return (
       <>
-        {/* Show thinking box right above the streaming message */}
-        {isStreaming && showThinking && (
-          <Animated.View style={[styles.thinkingBox, { opacity: thinkingOpacity }]}>
-            <Text style={styles.thinkingTitle}>Thinking...</Text>
+        {/* Show date separator if needed */}
+        {showDate && (
+          <View style={styles.dateSeparator}>
+            <View style={styles.dateLine} />
+            <Text style={styles.dateText}>
+              {new Date(item.timestamp).toLocaleDateString([], {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+              })}
+            </Text>
+            <View style={styles.dateLine} />
+          </View>
+        )}
+        
+        {/* Show thinking box above the streaming message */}
+        {isStreaming && isThinking && (
+          <Animated.View 
+            style={[
+              styles.thinkingBox, 
+              { opacity: thinkingOpacity },
+              isUser ? { marginLeft: 30 } : { marginRight: 30 }
+            ]}
+          >
+            <View style={styles.thinkingHeader}>
+              <FontAwesome5 name="brain" size={16} color="#6A3EA1" />
+              <Text style={styles.thinkingTitle}>Thinking</Text>
+            </View>
             <Text style={styles.thinkingStep}>{THINKING_STEPS[thinkingStep]}</Text>
             <View style={styles.thinkingProgress}>
-              {THINKING_STEPS.map((_, index) => (
+              {THINKING_STEPS.map((_, i) => (
                 <View 
-                  key={index} 
+                  key={i} 
                   style={[
                     styles.progressDot,
-                    index === thinkingStep ? styles.activeProgressDot : null
+                    i === thinkingStep ? styles.activeProgressDot : null
                   ]} 
                 />
               ))}
@@ -387,27 +480,53 @@ const ChatbotScreen = () => {
           </Animated.View>
         )}
         
-        {/* The actual message bubble */}
+        {/* Message row with avatar and bubble */}
         <View style={[
-          styles.messageBubble,
-          isUser ? styles.userBubble : styles.botBubble
+          styles.messageRow,
+          isUser ? styles.userMessageRow : styles.botMessageRow
         ]}>
-          <Text style={styles.messageText}>{item.text}</Text>
-          
-          {isStreaming && (
-            <View style={styles.typingIndicator}>
-              <View style={styles.typingDot} />
-              <View style={[styles.typingDot, { marginLeft: 4 }]} />
-              <View style={[styles.typingDot, { marginLeft: 4 }]} />
+          {/* Bot avatar */}
+          {!isUser && (
+            <View style={styles.avatarContainer}>
+              <LinearGradient
+                colors={['#8A56AC', '#6A3EA1']}
+                style={styles.avatar}
+              >
+                <FontAwesome5 name="baby" size={14} color="#FFFFFF" />
+              </LinearGradient>
             </View>
           )}
           
-          <Text style={styles.timestampText}>
-            {new Date(item.timestamp).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </Text>
+          {/* Message content */}
+          <View style={[
+            styles.messageBubble,
+            isUser ? styles.userBubble : styles.botBubble,
+            item.text.length > 100 && styles.largeMessageBubble
+          ]}>
+            <Text style={[
+              styles.messageText,
+              isUser ? styles.userMessageText : styles.botMessageText
+            ]}>
+              {item.text}
+            </Text>
+            
+            {/* Typing indicator for streaming messages */}
+            {isStreaming && (
+              <View style={styles.typingIndicator}>
+                <View style={[styles.typingDot, styles.typingDot1]} />
+                <View style={[styles.typingDot, styles.typingDot2]} />
+                <View style={[styles.typingDot, styles.typingDot3]} />
+              </View>
+            )}
+            
+            {/* Timestamp */}
+            <Text style={styles.timestampText}>
+              {formatTimestamp(item.timestamp)}
+            </Text>
+          </View>
+          
+          {/* User avatar placeholder (for alignment) */}
+          {isUser && <View style={styles.avatarPlaceholder} />}
         </View>
       </>
     );
@@ -416,257 +535,397 @@ const ChatbotScreen = () => {
   // Clear chat history
   const clearChat = async () => {
     try {
+      if (Platform.OS === 'ios') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+      
       await ChatbotService.clearChatHistory();
       
       // Add welcome message back
       const welcomeMessage = {
         id: Date.now().toString(),
-        text: "Hello! I'm your pregnancy assistant. How can I help you today?",
+        text: "Hello! I'm your pregnancy assistant. I'm here to provide evidence-based information and support through your pregnancy journey. How can I help you today?",
         sender: "bot",
         timestamp: new Date().toISOString(),
       };
       
       await ChatbotService.addMessageToHistory(welcomeMessage);
       setMessages([welcomeMessage]);
+      
+      // Reset all states
+      setIsThinking(false);
+      setStreamingMessageId(null);
+      setLoading(false);
     } catch (error) {
       console.error('Error clearing chat history:', error);
     }
   };
   
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : null}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Pregnancy Assistant</Text>
-        <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
-          <Ionicons name="trash-outline" size={20} color="#FF69B4" />
-        </TouchableOpacity>
-      </View>
-      
-      {/* Chat messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-      
-      {/* Thinking box for when we're waiting for a message but it hasn't started streaming yet */}
-      {showThinking && !streamingMessageId && (
-        <View style={styles.floatingThinkingContainer}>
-          <Animated.View 
-            style={[
-              styles.thinkingBox,
-              { opacity: thinkingOpacity }
-            ]}
-          >
-            <Text style={styles.thinkingTitle}>Thinking...</Text>
-            <Text style={styles.thinkingStep}>{THINKING_STEPS[thinkingStep]}</Text>
-            <View style={styles.thinkingProgress}>
-              {THINKING_STEPS.map((_, index) => (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.progressDot,
-                    index === thinkingStep ? styles.activeProgressDot : null
-                  ]} 
-                />
-              ))}
-            </View>
-          </Animated.View>
-        </View>
-      )}
-      
-      {/* Input and buttons area */}
-      
-      {/* Quick questions horizontal scrolling */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.quickQuestionsContainer}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : null}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
-        {QUICK_QUESTIONS.map((question, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.quickQuestionButton}
-            onPress={() => handleQuickQuestion(question)}
-            disabled={loading}
-          >
-            <Text style={styles.quickQuestionText}>{question}</Text>
+        {/* Custom gradient header */}
+        <LinearGradient
+          colors={['#8A56AC', '#6A3EA1']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.header}
+        >
+          <Text style={styles.headerTitle}>Pregnancy Assistant</Text>
+          <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
+            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-      
-      {/* Message input and buttons */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.textInput}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Type a message..."
-          placeholderTextColor="#999"
-          multiline
-          maxLength={500}
+        </LinearGradient>
+        
+        {/* Chat messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          showsVerticalScrollIndicator={false}
+          ListFooterComponent={
+            // Add extra space at the bottom for better UX
+            <View style={{ height: 20 }} />
+          }
         />
         
-        {/* Voice input button with animation */}
-        <TouchableOpacity
-          style={[
-            styles.voiceButton,
-            isListening && styles.listeningButton
-          ]}
-          onPress={startSpeechToText}
-          disabled={loading}
+        {/* Thinking box for when we're waiting but haven't started streaming */}
+        {/* {isThinking && (
+          <View style={styles.floatingThinkingContainer}>
+            <Animated.View 
+              style={[
+                styles.thinkingBox,
+                { opacity: thinkingOpacity }
+              ]}
+            >
+              <View style={styles.thinkingHeader}>
+                <FontAwesome5 name="brain" size={16} color="#6A3EA1" />
+                <Text style={styles.thinkingTitle}>Thinking</Text>
+              </View>
+              <Text style={styles.thinkingStep}>{THINKING_STEPS[thinkingStep]}</Text>
+              <View style={styles.thinkingProgress}>
+                {THINKING_STEPS.map((_, index) => (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.progressDot,
+                      index === thinkingStep ? styles.activeProgressDot : null
+                    ]} 
+                  />
+                ))}
+              </View>
+            </Animated.View>
+          </View>
+        )} */}
+        
+        {/* Quick questions toggle button */}
+        <TouchableOpacity 
+          style={styles.quickQuestionsToggle}
+          onPress={toggleQuickQuestions}
           activeOpacity={0.7}
         >
-          <Animated.View
-            style={[
-              styles.voicePulse,
-              {
-                transform: [{ scale: volumeAnimation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 1.3]
-                }) }],
-                opacity: volumeAnimation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 0.7]
-                })
-              }
-            ]}
-          />
+          <Text style={styles.quickQuestionsToggleText}>
+            {quickQuestionsExpanded ? "Hide suggestions" : "Show suggestions"}
+          </Text>
           <Ionicons 
-            name={isListening ? "mic" : "mic-outline"} 
-            size={20} 
-            color="#FFFFFF" 
+            name={quickQuestionsExpanded ? "chevron-up" : "chevron-down"} 
+            size={16} 
+            color="#6A3EA1" 
           />
-          {speechError ? (
-            <View style={styles.errorTooltip}>
-              <Text style={styles.errorText}>{speechError}</Text>
-            </View>
-          ) : null}
         </TouchableOpacity>
         
-        {/* Send button */}
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (inputText.trim() === '' || loading) && styles.disabledButton
-          ]}
-          onPress={sendMessage}
-          disabled={inputText.trim() === '' || loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        {/* Quick questions expandable section */}
+        <Animated.View style={[
+          styles.quickQuestionsContainer,
+          { height: quickQuestionsHeight }
+        ]}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickQuestionsContent}
+          >
+            {QUICK_QUESTIONS.map((question, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.quickQuestionButton}
+                onPress={() => handleQuickQuestion(question)}
+                disabled={loading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.quickQuestionText}>{question}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Animated.View>
+        
+        {/* Message input and buttons */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            ref={inputRef}
+            style={styles.textInput}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="Type your question..."
+            placeholderTextColor="#9E9E9E"
+            multiline
+            maxLength={500}
+            blurOnSubmit={false}
+          />
+          
+          {/* Voice input button with animation */}
+          <TouchableOpacity
+            style={[
+              styles.voiceButton,
+              isListening && styles.listeningButton
+            ]}
+            onPress={startSpeechToText}
+            disabled={loading}
+            activeOpacity={0.7}
+          >
+            <Animated.View
+              style={[
+                styles.voicePulse,
+                {
+                  transform: [{ scale: volumeAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.5]
+                  }) }],
+                  opacity: volumeAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.5]
+                  })
+                }
+              ]}
+            />
+            <Ionicons 
+              name={isListening ? "mic" : "mic-outline"} 
+              size={22} 
+              color="#FFFFFF" 
+            />
+            {speechError ? (
+              <View style={styles.errorTooltip}>
+                <Text style={styles.errorText}>{speechError}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          
+          {/* Send button */}
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (inputText.trim() === '' || loading) && styles.disabledButton
+            ]}
+            onPress={sendMessage}
+            disabled={inputText.trim() === '' || loading}
+            activeOpacity={0.7}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F9F5FF', // Light purple background for softer feel
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   clearButton: {
-    padding: 5,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   messagesList: {
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  dateSeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dateLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    marginHorizontal: 8,
+    fontWeight: '500',
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    alignItems: 'flex-end',
+  },
+  userMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  botMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  avatarContainer: {
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarPlaceholder: {
+    width: 32,
+    marginLeft: 8,
   },
   messageBubble: {
-    maxWidth: '80%',
+    maxWidth: '75%',
     padding: 12,
     borderRadius: 18,
-    marginVertical: 5,
     elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 1,
   },
+  largeMessageBubble: {
+    maxWidth: '85%',
+  },
   userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#E6E6FA', // Light purple
-    borderBottomRightRadius: 5,
+    backgroundColor: '#6A3EA1', // Deeper purple for user
+    borderBottomRightRadius: 4,
   },
   botBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFE4E1', // Soft pink
-    borderBottomLeftRadius: 5,
+    backgroundColor: '#FFFFFF', // White for bot with border
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F0E6FF',
   },
   messageText: {
     fontSize: 16,
-    color: '#333',
     lineHeight: 22,
+  },
+  userMessageText: {
+    color: '#FFFFFF',
+  },
+  botMessageText: {
+    color: '#424242',
   },
   timestampText: {
     fontSize: 10,
-    color: '#888',
+    color: 'rgba(255,255,255,0.7)',
     alignSelf: 'flex-end',
-    marginTop: 5,
+    marginTop: 6,
+  },
+  thinkingInline: {
+    marginTop: 8,
+    marginBottom: 16,
+    marginLeft: 40,
+    maxWidth: '80%',
   },
   typingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     margin: 5,
+    height: 20,
   },
   typingDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#FF69B4',
+    backgroundColor: '#6A3EA1',
+    marginRight: 4,
     opacity: 0.8,
   },
+  typingDot1: {
+    animationName: 'bounce',
+    animationDuration: '0.6s',
+    animationIterationCount: 'infinite',
+  },
+  typingDot2: {
+    animationName: 'bounce',
+    animationDuration: '0.6s',
+    animationDelay: '0.2s',
+    animationIterationCount: 'infinite',
+  },
+  typingDot3: {
+    animationName: 'bounce',
+    animationDuration: '0.6s',
+    animationDelay: '0.4s',
+    animationIterationCount: 'infinite',
+  },
   thinkingBox: {
-    backgroundColor: '#FFD1E0', // Much more solid pink background
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 15,
+    backgroundColor: '#F0E6FF', // Light purple background
+    borderRadius: 16,
+    padding: 14,
     marginVertical: 10,
-    borderWidth: 2,
-    borderColor: '#FF4081', // Brighter pink border
-    shadowColor: '#000',
+    marginHorizontal: 0,
+    borderWidth: 1,
+    borderColor: '#E2D1FF', // Slightly darker border
+    shadowColor: '#6A3EA1',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3, // Higher shadow opacity
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5, // Higher elevation
+    elevation: 2,
+    zIndex: 50,
+  },
+  thinkingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   thinkingTitle: {
-    fontWeight: 'bold',
-    color: '#D81B60', // Deep pink color for title
-    marginBottom: 5,
-    fontSize: 15, // Slightly larger
+    fontWeight: '600',
+    color: '#6A3EA1', // Deep purple for title
+    marginLeft: 6,
+    fontSize: 14,
   },
   thinkingStep: {
-    color: '#000000', // Black text for maximum contrast
-    fontSize: 14, // Slightly larger
-    marginBottom: 8,
-    fontWeight: '600', // Bolder font
+    color: '#424242', // Dark text for readability
+    fontSize: 14,
+    marginBottom: 10,
+    fontWeight: '400',
   },
   thinkingProgress: {
     flexDirection: 'row',
@@ -677,82 +936,119 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#DDD',
+    backgroundColor: '#D1C4E9',
     marginHorizontal: 3,
   },
   activeProgressDot: {
-    backgroundColor: '#FF69B4',
+    backgroundColor: '#6A3EA1',
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  quickQuestionsContainer: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#FFF',
+  floatingThinkingContainer: {
+    position: 'absolute',
+    bottom: 120,
+    left: 16,
+    right: 16,
+    zIndex: 999,
+    backgroundColor: 'transparent',
+  },
+  quickQuestionsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    backgroundColor: '#F0E6FF',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#EEE',
+    borderColor: '#E2D1FF',
+  },
+  quickQuestionsToggleText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6A3EA1',
+    marginRight: 4,
+  },
+  quickQuestionsContainer: {
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  quickQuestionsContent: {
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    flexWrap: 'wrap',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   quickQuestionButton: {
-    backgroundColor: '#FFE4E1',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 18,
-    marginHorizontal: 5,
+    backgroundColor: '#F0E6FF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginHorizontal: 6,
+    marginVertical: 6,
     borderWidth: 1,
-    borderColor: '#FFCDC7',
+    borderColor: '#E2D1FF',
   },
   quickQuestionText: {
-    fontSize: 14,
-    color: '#FF69B4',
+    fontSize: 13,
+    color: '#6A3EA1',
+    fontWeight: '500',
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
+    padding: 12,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#EEE',
+    borderTopColor: '#F0E6FF',
     alignItems: 'flex-end',
   },
   textInput: {
     flex: 1,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 16,
-    maxHeight: 100,
-    minHeight: 40,
+    maxHeight: 120,
+    minHeight: 48,
   },
   voiceButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF69B4',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#6A3EA1',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
     overflow: 'visible', // Allow pulse effect to overflow
     zIndex: 1,
+    shadowColor: '#6A3EA1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   listeningButton: {
-    backgroundColor: '#FF4081', // Darker pink when listening
+    backgroundColor: '#C2185B', // Pink/red when listening
   },
   voicePulse: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF69B4',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#6A3EA1',
     zIndex: -1,
   },
   errorTooltip: {
     position: 'absolute',
-    bottom: 45,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    bottom: 55,
+    backgroundColor: 'rgba(244, 67, 54, 0.9)',
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 8,
     width: 150,
     zIndex: 2,
   },
@@ -762,26 +1058,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF69B4',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#6A3EA1',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
+    shadowColor: '#6A3EA1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   disabledButton: {
-    backgroundColor: '#FFC0CB', // Lighter pink for disabled state
-    opacity: 0.7,
+    backgroundColor: '#BDB4C7',
+    shadowOpacity: 0.1,
   },
-  loatingThinkingContainer: {
-    position: 'absolute',
-    bottom: 120, // Position just above the input area
-    left: 20,
-    right: 20,
-    zIndex: 10,
-    backgroundColor: '#FFF',
-  }
 });
 
 export default ChatbotScreen;
