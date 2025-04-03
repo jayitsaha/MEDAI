@@ -1,42 +1,43 @@
 {
-    "expo": {
-      "name": "MEDAI",
-      "slug": "medai",
-      "version": "1.0.0",
-      "plugins": [
-        [
-          "expo-image-picker",
-          {
-            "photosPermission": "MEDAI needs access to your photos to analyze prescriptions and medications.",
-            "cameraPermission": "MEDAI needs camera access to scan medications and prescriptions."
-          }
-        ],
-        [
-          "expo-location",
-          {
-            "locationAlwaysAndWhenInUsePermission": "Allow MEDAI to access your location for tracking and safe zone features.",
-            "locationAlwaysPermission": "Allow MEDAI to access your location in the background for safety monitoring.",
-            "locationWhenInUsePermission": "Allow MEDAI to access your location when using the app.",
-            "isIosBackgroundLocationEnabled": true,
-            "isAndroidBackgroundLocationEnabled": true
-          }
-        ]
+  "expo": {
+    "name": "MEDAI",
+    "slug": "medai",
+    "version": "1.0.0",
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MEDAI needs access to your photos to analyze prescriptions and medications.",
+          "cameraPermission": "MEDAI needs camera access to scan medications and prescriptions."
+        }
       ],
-      "android": {
-        "adaptiveIcon": {
-          "backgroundColor": "#FFFFFF"
-        },
-        "permissions": [
-          "CAMERA",
-          "READ_EXTERNAL_STORAGE",
-          "WRITE_EXTERNAL_STORAGE",
-          "ACCESS_BACKGROUND_LOCATION",
-          "ACCESS_COARSE_LOCATION",
-          "ACCESS_FINE_LOCATION",
-          "FOREGROUND_SERVICE"
-        ],
-        "useNextNotificationsApi": true,
-        "package": "com.yourcompany.medai"
-      }
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow MEDAI to access your location for tracking and safe zone features.",
+          "locationAlwaysPermission": "Allow MEDAI to access your location in the background for safety monitoring.",
+          "locationWhenInUsePermission": "Allow MEDAI to access your location when using the app.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-speech-recognition"
+    ],
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_BACKGROUND_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE"
+      ],
+      "useNextNotificationsApi": true,
+      "package": "com.yourcompany.medai"
     }
   }
+}
