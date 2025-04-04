@@ -1,6 +1,5 @@
 // ReferencePoseModels.js - Realistic human poses for yoga references
-
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View } from 'react-native';
 import Svg, { Path, G, Circle, Ellipse, Rect } from 'react-native-svg';
 

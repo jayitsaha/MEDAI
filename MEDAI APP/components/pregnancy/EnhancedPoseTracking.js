@@ -1,5 +1,5 @@
 // Enhanced body joint tracking with real-time pose detection
-
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera } from 'expo-camera';
 import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
