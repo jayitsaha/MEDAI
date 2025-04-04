@@ -10,11 +10,13 @@ import {
   ScrollView,
   Dimensions,
   Modal,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Video } from 'expo-av';
+import YogaPoseEstimator from '../../components/pregnancy/YogaPoseEstimator';
 
 // Sample yoga poses data (in a real app, this would come from an API)
 const YOGA_POSES = {
@@ -159,6 +161,8 @@ const YogaScreen = () => {
   const [poseModalVisible, setPoseModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [videoLoading, setVideoLoading] = useState(false);
+  const [estimatorVisible, setEstimatorVisible] = useState(false);
+  const [estimatorPose, setEstimatorPose] = useState(null);
   
   const screenWidth = Dimensions.get('window').width;
   
@@ -189,12 +193,22 @@ const YogaScreen = () => {
   };
   
   // Record completed session
-  const recordSession = async (poseId) => {
+  const recordSession = async (poseId, sessionData = null) => {
     const timestamp = new Date().toISOString();
+    
+    // Create session record with either basic or detailed info
+    const sessionRecord = sessionData ? {
+      timestamp,
+      accuracy: sessionData.accuracy,
+      feedback: sessionData.feedback,
+      duration: sessionData.duration
+    } : {
+      timestamp
+    };
     
     const updatedHistory = {
       ...sessionHistory,
-      [poseId]: [...(sessionHistory[poseId] || []), timestamp]
+      [poseId]: [...(sessionHistory[poseId] || []), sessionRecord]
     };
     
     setSessionHistory(updatedHistory);
@@ -209,7 +223,8 @@ const YogaScreen = () => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
-    const recentSessions = sessionHistory[poseId].filter(timestamp => {
+    const recentSessions = sessionHistory[poseId].filter(session => {
+      const timestamp = typeof session === 'string' ? session : session.timestamp;
       const sessionDate = new Date(timestamp);
       return sessionDate >= sevenDaysAgo;
     });
@@ -223,7 +238,7 @@ const YogaScreen = () => {
     setPoseModalVisible(true);
   };
   
-  // Complete a yoga session
+  // Complete a yoga session (manual mode)
   const completeSession = async () => {
     setLoading(true);
     
@@ -234,12 +249,38 @@ const YogaScreen = () => {
       setTimeout(() => {
         setLoading(false);
         setPoseModalVisible(false);
-        // Show completion message or update UI
+        // Show completion message
+        Alert.alert('Success', 'Session completed successfully!');
       }, 1000);
     } catch (error) {
       console.error('Error completing session:', error);
       setLoading(false);
+      Alert.alert('Error', 'Failed to complete session. Please try again.');
     }
+  };
+
+  // Start AI-guided practice
+  const startAIGuidedPractice = () => {
+    console.log('Starting AI-guided practice');
+    setEstimatorPose(selectedPose);
+    setPoseModalVisible(false);
+    setEstimatorVisible(true);
+  };
+  
+  // Handle AI session completion
+  const handleEstimatorComplete = (sessionData) => {
+    console.log('AI session completed:', sessionData);
+    // Record AI-guided session with detailed data
+    recordSession(sessionData.poseId, sessionData);
+    setEstimatorVisible(false);
+    // Show success message
+    Alert.alert('Success', 'AI-guided session completed successfully!');
+  };
+  
+  // Close the estimator
+  const handleEstimatorClose = () => {
+    console.log('Closing AI estimator');
+    setEstimatorVisible(false);
   };
   
   // Render a yoga pose card
@@ -358,22 +399,27 @@ const YogaScreen = () => {
               ))}
             </View>
             
-            <View style={styles.completionContainer}>
-              <Text style={styles.completionText}>
-                Completed {sessionHistory[selectedPose.id]?.length || 0} times
-              </Text>
+            <View style={styles.practiceOptionsContainer}>
+              <TouchableOpacity 
+                style={styles.aiPracticeButton}
+                onPress={startAIGuidedPractice}
+              >
+                <Ionicons name="analytics-outline" size={24} color="#FFFFFF" />
+                <Text style={styles.practiceButtonText}>AI-Guided Practice</Text>
+              </TouchableOpacity>
               
               <TouchableOpacity 
-                style={styles.completeButton}
+                style={styles.selfPracticeButton}
                 onPress={completeSession}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.completeButtonText}>
-                    Complete Session
-                  </Text>
+                  <>
+                    <Ionicons name="person-outline" size={24} color="#FFFFFF" />
+                    <Text style={styles.practiceButtonText}>Self-Guided Practice</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
@@ -460,6 +506,27 @@ const YogaScreen = () => {
       />
       
       {renderPoseModal()}
+      
+      {/* YogaPoseEstimator Modal */}
+      <Modal
+        visible={estimatorVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleEstimatorClose}
+        statusBarTranslucent={true}
+        style={{
+          margin: 0,
+          justifyContent: 'flex-end',
+        }}
+      >
+        {estimatorPose && (
+          <YogaPoseEstimator 
+            pose={estimatorPose}
+            onClose={handleEstimatorClose}
+            onComplete={handleEstimatorComplete}
+          />
+        )}
+      </Modal>
     </View>
   );
 };
@@ -618,7 +685,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   videoLoadingContainer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.1)',
@@ -664,31 +735,40 @@ const styles = StyleSheet.create({
     color: '#555',
     marginLeft: 10,
   },
-  completionContainer: {
+  practiceOptionsContainer: {
     marginTop: 20,
     paddingTop: 20,
     borderTopWidth: 1,
     borderTopColor: '#EEE',
+    flexDirection: 'column',
     alignItems: 'center',
   },
-  completionText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 15,
-  },
-  completeButton: {
-    backgroundColor: '#FF69B4',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
+  aiPracticeButton: {
+    backgroundColor: '#4285F4',  // Google blue
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '80%',
+    width: '100%',
+    marginBottom: 15,
+    flexDirection: 'row',
   },
-  completeButtonText: {
+  selfPracticeButton: {
+    backgroundColor: '#FF69B4',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    flexDirection: 'row',
+  },
+  practiceButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 10,
   },
 });
 

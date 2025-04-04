@@ -18,6 +18,8 @@ from ai.chatbot import get_pregnancy_response
 from ai.fall_detection import analyze_accelerometer_data
 from ai.grok_vision import GroqVision
 import requests
+from ai.yoga_pose_estimation import yoga_pose_estimator
+import base64
 # Load environment variables
 load_dotenv()
 
@@ -1256,6 +1258,92 @@ Please suggest 3 recipes that can be made primarily with these ingredients. Foll
     except Exception as e:
         logger.exception("Error generating recipe suggestions")
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/api/yoga/pose-estimation', methods=['POST'])
+def estimate_yoga_pose():
+    """Process a frame from the camera and estimate yoga pose accuracy."""
+    try:
+        if 'image' not in request.json:
+            return jsonify({'error': 'No image provided'}), 400
+            
+        image_base64 = request.json['image']
+        pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
+        
+        # Decode base64 image
+        if image_base64.startswith('data:image'):
+            image_base64 = image_base64.split(',')[1]
+        
+        image_data = base64.b64decode(image_base64)
+        
+        # Estimate pose using the yoga pose estimator
+        results = yoga_pose_estimator.estimate_pose(image_data, pose_id)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'accuracy': results['accuracy'],
+                'keypoints': results['keypoints']
+            }
+        })
+    except Exception as e:
+        logger.exception("Error estimating yoga pose")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/yoga/posture-feedback', methods=['POST'])
+def get_yoga_posture_feedback():
+    """Get AI-powered feedback for yoga posture improvement."""
+    try:
+        if 'image' not in request.json:
+            return jsonify({'error': 'No image provided'}), 400
+            
+        image_base64 = request.json['image']
+        pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
+        is_final = request.json.get('isFinal', False)
+        keypoints = request.json.get('keypoints', [])
+        
+        # Decode base64 image
+        if image_base64.startswith('data:image'):
+            image_base64 = image_base64.split(',')[1]
+        
+        image_data = base64.b64decode(image_base64)
+        
+        # Get pose feedback from LLM
+        feedback = yoga_pose_estimator.get_pose_feedback(
+            image_data, 
+            pose_id, 
+            keypoints, 
+            is_final
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'feedback': feedback
+            }
+        })
+    except Exception as e:
+        logger.exception("Error getting yoga posture feedback")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/yoga/reference-pose/<pose_id>', methods=['GET'])
+def get_reference_pose(pose_id):
+    """Get reference keypoints for a specific yoga pose."""
+    try:
+        # Get reference pose from estimator
+        reference_pose = yoga_pose_estimator.get_reference_pose(pose_id)
+        
+        return jsonify({
+            'success': True,
+            'data': reference_pose
+        })
+    except Exception as e:
+        logger.exception("Error getting reference pose")
+        # Add a proper return statement for error handling
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
     # Run the Flask app
