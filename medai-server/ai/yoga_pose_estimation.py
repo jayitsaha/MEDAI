@@ -1,17 +1,19 @@
-# ai/yoga_pose_estimation.py
+# ai/yoga_pose_estimation.py (updated version)
 import os
 import base64
 import numpy as np
-import torch
 import cv2
 import time
 import json
 import logging
-import re  # Added for JSON extraction from LLM responses
+import re
 from typing import Dict, List, Tuple, Any, Optional
 import requests
 from PIL import Image
 from io import BytesIO
+
+# Import MediaPipe
+import mediapipe as mp
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,38 +26,20 @@ class YogaPoseEstimator:
     """YogaPoseEstimator model for analyzing and providing feedback on yoga poses."""
     
     def __init__(self):
-        """Initialize the YogaPoseEstimator."""
+        """Initialize the YogaPoseEstimator with MediaPipe."""
         # Reference pose data cache
         self._reference_poses = {}
         
-        # Load YogaNet model (using MoveNet Thunder as a base for this example)
-        try:
-            import tensorflow as tf
-            import tensorflow_hub as hub
-            
-            # Load MoveNet Thunder model from TensorFlow Hub
-            self.model = hub.load('https://tfhub.dev/google/movenet/singlepose/thunder/4')
-            self.movenet = self.model.signatures['serving_default']
-            self.use_tf = True
-            logger.info("Loaded MoveNet Thunder model from TensorFlow Hub")
-        except ImportError:
-            logger.warning("TensorFlow not available, using OpenCV-based pose estimation")
-            self.use_tf = False
-            # Fallback to OpenCV DNN models if TensorFlow isn't available
-            try:
-                # Load OpenPose model (simplified version for demo purposes)
-                proto_file = "models/pose/mpi/pose_deploy_linevec_faster_4_stages.prototxt"
-                weight_file = "models/pose/mpi/pose_iter_160000.caffemodel"
-                
-                if os.path.exists(proto_file) and os.path.exists(weight_file):
-                    self.net = cv2.dnn.readNetFromCaffe(proto_file, weight_file)
-                    logger.info("Loaded OpenPose model from OpenCV")
-                else:
-                    logger.warning(f"OpenPose model files not found at {proto_file}")
-                    self.net = None
-            except Exception as e:
-                logger.error(f"Error loading OpenCV pose model: {str(e)}")
-                self.net = None
+        # Initialize MediaPipe Pose
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(
+            static_image_mode=True,
+            model_complexity=2,  # Use the most accurate model
+            enable_segmentation=False,
+            min_detection_confidence=0.5
+        )
+        
+        logger.info("Initialized MediaPipe Pose model")
     
     def preprocess_image(self, image_data: bytes) -> np.ndarray:
         """
@@ -71,41 +55,22 @@ class YogaPoseEstimator:
             # Convert to PIL Image
             image = Image.open(BytesIO(image_data))
             
-            # For TensorFlow model
-            if self.use_tf:
-                # Resize to match model input size
-                image = image.resize((256, 256))
-                
-                # Convert to numpy array
-                image_np = np.array(image)
-                
-                # Add batch dimension
-                image_np = np.expand_dims(image_np, axis=0)
-                
-                # Convert to float32 and normalize
-                image_np = image_np.astype(np.float32) / 255.0
-                
-                return image_np
+            # Convert to RGB format (MediaPipe expects RGB)
+            image = image.convert('RGB')
             
-            # For OpenCV model
-            else:
-                # Resize to 368x368 for OpenPose
-                image = image.resize((368, 368))
-                
-                # Convert to numpy array
-                image_np = np.array(image)
-                
-                # Return as BGR format
-                return cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+            # Convert to numpy array
+            image_np = np.array(image)
+            
+            return image_np
         
         except Exception as e:
             logger.error(f"Error in preprocessing image: {str(e)}")
             # Return a default image if processing fails
             return np.zeros((368, 368, 3), dtype=np.uint8)
     
-    def detect_pose_tensorflow(self, image: np.ndarray) -> List[Dict[str, Any]]:
+    def detect_pose(self, image: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Detect pose keypoints using TensorFlow MoveNet model.
+        Detect pose keypoints using MediaPipe.
         
         Args:
             image: Preprocessed image as numpy array
@@ -114,122 +79,59 @@ class YogaPoseEstimator:
             List of keypoint dictionaries
         """
         try:
-            # Get model prediction
-            input_tensor = torch.tensor(image, dtype=torch.float32)
-            outputs = self.movenet(input_tensor)
+            # Process the image with MediaPipe Pose
+            results = self.pose.process(image)
             
-            # Extract keypoints
-            keypoints = outputs['output_0'].numpy()[0, 0, :, :4]
-            
-            # Format keypoints
-            formatted_keypoints = []
-            keypoint_names = [
-                'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
-                'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-                'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
-                'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
-            ]
-            
-            for idx, (y, x, score, _) in enumerate(keypoints):
-                if idx < len(keypoint_names):
-                    formatted_keypoints.append({
-                        'part': keypoint_names[idx],
-                        'position': {
-                            'x': float(x),
-                            'y': float(y)
-                        },
-                        'score': float(score)
-                    })
-            
-            return formatted_keypoints
-            
-        except Exception as e:
-            logger.error(f"Error in TensorFlow pose detection: {str(e)}")
-            return []
-    
-    def detect_pose_opencv(self, image: np.ndarray) -> List[Dict[str, Any]]:
-        """
-        Detect pose keypoints using OpenCV DNN.
-        
-        Args:
-            image: Preprocessed image as numpy array
-            
-        Returns:
-            List of keypoint dictionaries
-        """
-        try:
-            if self.net is None:
-                # Return dummy keypoints if model not loaded
+            if not results.pose_landmarks:
+                logger.warning("No pose landmarks detected")
                 return self._get_dummy_keypoints()
-            
-            # Prepare the image
-            input_height, input_width = 368, 368
-            
-            # Create a blob from the image
-            blob = cv2.dnn.blobFromImage(image, 1.0 / 255, (input_width, input_height), 
-                                         (0, 0, 0), swapRB=False, crop=False)
-            
-            # Set the input
-            self.net.setInput(blob)
-            
-            # Forward pass
-            output = self.net.forward()
             
             # Get image dimensions
             h, w = image.shape[:2]
             
-            # Format keypoints
+            # Format keypoints from MediaPipe format to our format
             formatted_keypoints = []
-            keypoint_names = [
-                'nose', 'neck', 
-                'right_shoulder', 'right_elbow', 'right_wrist', 
-                'left_shoulder', 'left_elbow', 'left_wrist',
-                'right_hip', 'right_knee', 'right_ankle',
-                'left_hip', 'left_knee', 'left_ankle',
-                'right_eye', 'left_eye',
-                'right_ear', 'left_ear'
-            ]
             
-            # Number of points detected
-            num_points = output.shape[1]
+            # MediaPipe pose landmarks to our keypoint parts mapping
+            landmark_to_part = {
+                0: 'nose',
+                2: 'left_eye',
+                5: 'right_eye',
+                7: 'left_ear',
+                8: 'right_ear',
+                11: 'left_shoulder',
+                12: 'right_shoulder',
+                13: 'left_elbow',
+                14: 'right_elbow',
+                15: 'left_wrist',
+                16: 'right_wrist',
+                23: 'left_hip',
+                24: 'right_hip',
+                25: 'left_knee',
+                26: 'right_knee',
+                27: 'left_ankle',
+                28: 'right_ankle'
+            }
             
-            # Extract keypoints
-            for i in range(num_points):
-                if i < len(keypoint_names):
-                    # Confidence map for a specific body part
-                    prob_map = output[0, i, :, :]
-                    
-                    # Find global maxima of the probability map
-                    _, prob, _, point = cv2.minMaxLoc(prob_map)
-                    
-                    # Scale point to input image dimensions
-                    x = (point[0] * w) / output.shape[3]
-                    y = (point[1] * h) / output.shape[2]
-                    
-                    # Add keypoint if confidence is above threshold
-                    if prob > 0.1:
-                        formatted_keypoints.append({
-                            'part': keypoint_names[i],
-                            'position': {
-                                'x': float(x / w),  # Normalize to 0-1
-                                'y': float(y / h)   # Normalize to 0-1
-                            },
-                            'score': float(prob)
-                        })
+            for idx, part_name in landmark_to_part.items():
+                landmark = results.pose_landmarks.landmark[idx]
+                formatted_keypoints.append({
+                    'part': part_name,
+                    'position': {
+                        'x': landmark.x,  # MediaPipe already normalizes to 0-1
+                        'y': landmark.y   # MediaPipe already normalizes to 0-1
+                    },
+                    'score': landmark.visibility  # MediaPipe provides visibility as confidence
+                })
             
             return formatted_keypoints
             
         except Exception as e:
-            logger.error(f"Error in OpenCV pose detection: {str(e)}")
+            logger.error(f"Error in MediaPipe pose detection: {str(e)}")
             return self._get_dummy_keypoints()
     
     def _get_dummy_keypoints(self) -> List[Dict[str, Any]]:
-        """
-        Generate dummy keypoints for testing when no model is available.
-        
-        Returns:
-            List of keypoint dictionaries with standard positions
-        """
+        """Generate dummy keypoints for testing when no model is available."""
         # Standard pose in mountain pose (simplified)
         keypoint_names = [
             'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
@@ -359,8 +261,7 @@ class YogaPoseEstimator:
         if pose_id in self._reference_poses:
             return self._reference_poses[pose_id]
         
-        # Get pose information from database or predefined data
-        # In a real implementation, these would be loaded from a database
+        # Get pose information from predefined data
         pose_info = self._get_pose_info(pose_id)
         
         if not pose_info:
@@ -368,7 +269,7 @@ class YogaPoseEstimator:
             # Return default reference pose
             self._reference_poses[pose_id] = {
                 'id': pose_id,
-                'keypoints': self._generate_default_keypoints()
+                'keypoints': self._get_pose_specific_keypoints(pose_id)
             }
             return self._reference_poses[pose_id]
         
@@ -382,23 +283,14 @@ class YogaPoseEstimator:
         # Cache the reference pose
         self._reference_poses[pose_id] = {
             'id': pose_id,
+            'title': pose_info.get('title', 'Unknown Pose'),
             'keypoints': keypoints
         }
         
         return self._reference_poses[pose_id]
     
-
     def _get_pose_info(self, pose_id: str) -> Dict[str, Any]:
-        """
-        Get pose information for a given pose ID.
-        In a real implementation, this would query a database.
-        
-        Args:
-            pose_id: Identifier for the yoga pose
-            
-        Returns:
-            Dictionary with pose information
-        """
+        """Get pose information for a given pose ID."""
         # Sample pose information for common yoga poses
         poses = {
             '1-1': {
@@ -440,6 +332,22 @@ class YogaPoseEstimator:
         }
         
         return poses.get(pose_id, {})
+    
+    def _get_pose_specific_keypoints(self, pose_id: str) -> List[Dict[str, Any]]:
+        """Get specific keypoints for a pose ID as fallback."""
+        pose_keypoints_map = {
+            '1-1': self._generate_mountain_pose_keypoints(),
+            '1-2': self._generate_cat_cow_pose_keypoints(),
+            '1-3': self._generate_seated_side_stretch_keypoints(),
+            '2-1': self._generate_warrior_ii_keypoints(),
+            '2-2': self._generate_wide_legged_forward_fold_keypoints(),
+            '2-3': self._generate_triangle_pose_keypoints(),
+            '3-1': self._generate_squat_pose_keypoints(),
+            '3-2': self._generate_butterfly_pose_keypoints(),
+            '3-3': self._generate_side_lying_pose_keypoints()
+        }
+        
+        return pose_keypoints_map.get(pose_id, self._generate_mountain_pose_keypoints())
     
     def _generate_mountain_pose_keypoints(self) -> List[Dict[str, Any]]:
         """Generate keypoints for Mountain Pose."""
@@ -506,7 +414,8 @@ class YogaPoseEstimator:
             {'part': 'left_ankle', 'position': {'x': 0.3, 'y': 0.85}, 'score': 1.0},
             {'part': 'right_ankle', 'position': {'x': 0.75, 'y': 0.82}, 'score': 1.0}
         ]
-    
+
+    # Adding new pose keypoint generators for remaining poses
     def _generate_warrior_ii_keypoints(self) -> List[Dict[str, Any]]:
         """Generate keypoints for Warrior II Pose."""
         return [
@@ -551,22 +460,102 @@ class YogaPoseEstimator:
             {'part': 'right_ankle', 'position': {'x': 0.85, 'y': 0.9}, 'score': 1.0}
         ]
     
+    def _generate_triangle_pose_keypoints(self) -> List[Dict[str, Any]]:
+        """Generate keypoints for Triangle Pose."""
+        return [
+            {'part': 'nose', 'position': {'x': 0.35, 'y': 0.3}, 'score': 1.0},
+            {'part': 'left_eye', 'position': {'x': 0.33, 'y': 0.29}, 'score': 1.0},
+            {'part': 'right_eye', 'position': {'x': 0.37, 'y': 0.29}, 'score': 1.0},
+            {'part': 'left_ear', 'position': {'x': 0.31, 'y': 0.3}, 'score': 1.0},
+            {'part': 'right_ear', 'position': {'x': 0.39, 'y': 0.3}, 'score': 1.0},
+            {'part': 'left_shoulder', 'position': {'x': 0.4, 'y': 0.4}, 'score': 1.0},
+            {'part': 'right_shoulder', 'position': {'x': 0.5, 'y': 0.2}, 'score': 1.0},
+            {'part': 'left_elbow', 'position': {'x': 0.3, 'y': 0.5}, 'score': 1.0},
+            {'part': 'right_elbow', 'position': {'x': 0.6, 'y': 0.15}, 'score': 1.0},
+            {'part': 'left_wrist', 'position': {'x': 0.25, 'y': 0.65}, 'score': 1.0},
+            {'part': 'right_wrist', 'position': {'x': 0.75, 'y': 0.1}, 'score': 1.0},
+            {'part': 'left_hip', 'position': {'x': 0.35, 'y': 0.55}, 'score': 1.0},
+            {'part': 'right_hip', 'position': {'x': 0.55, 'y': 0.55}, 'score': 1.0},
+            {'part': 'left_knee', 'position': {'x': 0.2, 'y': 0.75}, 'score': 1.0},
+            {'part': 'right_knee', 'position': {'x': 0.7, 'y': 0.75}, 'score': 1.0},
+            {'part': 'left_ankle', 'position': {'x': 0.15, 'y': 0.9}, 'score': 1.0},
+            {'part': 'right_ankle', 'position': {'x': 0.85, 'y': 0.9}, 'score': 1.0}
+        ]
+    
+    def _generate_squat_pose_keypoints(self) -> List[Dict[str, Any]]:
+        """Generate keypoints for Modified Squat Pose."""
+        return [
+            {'part': 'nose', 'position': {'x': 0.5, 'y': 0.4}, 'score': 1.0},
+            {'part': 'left_eye', 'position': {'x': 0.48, 'y': 0.39}, 'score': 1.0},
+            {'part': 'right_eye', 'position': {'x': 0.52, 'y': 0.39}, 'score': 1.0},
+            {'part': 'left_ear', 'position': {'x': 0.46, 'y': 0.4}, 'score': 1.0},
+            {'part': 'right_ear', 'position': {'x': 0.54, 'y': 0.4}, 'score': 1.0},
+            {'part': 'left_shoulder', 'position': {'x': 0.4, 'y': 0.45}, 'score': 1.0},
+            {'part': 'right_shoulder', 'position': {'x': 0.6, 'y': 0.45}, 'score': 1.0},
+            {'part': 'left_elbow', 'position': {'x': 0.3, 'y': 0.6}, 'score': 1.0},
+            {'part': 'right_elbow', 'position': {'x': 0.7, 'y': 0.6}, 'score': 1.0},
+            {'part': 'left_wrist', 'position': {'x': 0.25, 'y': 0.7}, 'score': 1.0},
+            {'part': 'right_wrist', 'position': {'x': 0.75, 'y': 0.7}, 'score': 1.0},
+            {'part': 'left_hip', 'position': {'x': 0.35, 'y': 0.65}, 'score': 1.0},
+            {'part': 'right_hip', 'position': {'x': 0.65, 'y': 0.65}, 'score': 1.0},
+            {'part': 'left_knee', 'position': {'x': 0.3, 'y': 0.8}, 'score': 1.0},
+            {'part': 'right_knee', 'position': {'x': 0.7, 'y': 0.8}, 'score': 1.0},
+            {'part': 'left_ankle', 'position': {'x': 0.35, 'y': 0.95}, 'score': 1.0},
+            {'part': 'right_ankle', 'position': {'x': 0.65, 'y': 0.95}, 'score': 1.0}
+        ]
+    
+    def _generate_butterfly_pose_keypoints(self) -> List[Dict[str, Any]]:
+        """Generate keypoints for Seated Butterfly Pose."""
+        return [
+            {'part': 'nose', 'position': {'x': 0.5, 'y': 0.25}, 'score': 1.0},
+            {'part': 'left_eye', 'position': {'x': 0.48, 'y': 0.24}, 'score': 1.0},
+            {'part': 'right_eye', 'position': {'x': 0.52, 'y': 0.24}, 'score': 1.0},
+            {'part': 'left_ear', 'position': {'x': 0.46, 'y': 0.25}, 'score': 1.0},
+            {'part': 'right_ear', 'position': {'x': 0.54, 'y': 0.25}, 'score': 1.0},
+            {'part': 'left_shoulder', 'position': {'x': 0.4, 'y': 0.35}, 'score': 1.0},
+            {'part': 'right_shoulder', 'position': {'x': 0.6, 'y': 0.35}, 'score': 1.0},
+            {'part': 'left_elbow', 'position': {'x': 0.3, 'y': 0.5}, 'score': 1.0},
+            {'part': 'right_elbow', 'position': {'x': 0.7, 'y': 0.5}, 'score': 1.0},
+            {'part': 'left_wrist', 'position': {'x': 0.3, 'y': 0.65}, 'score': 1.0},
+            {'part': 'right_wrist', 'position': {'x': 0.7, 'y': 0.65}, 'score': 1.0},
+            {'part': 'left_hip', 'position': {'x': 0.4, 'y': 0.65}, 'score': 1.0},
+            {'part': 'right_hip', 'position': {'x': 0.6, 'y': 0.65}, 'score': 1.0},
+            {'part': 'left_knee', 'position': {'x': 0.3, 'y': 0.55}, 'score': 1.0},
+            {'part': 'right_knee', 'position': {'x': 0.7, 'y': 0.55}, 'score': 1.0},
+            {'part': 'left_ankle', 'position': {'x': 0.45, 'y': 0.7}, 'score': 1.0},
+            {'part': 'right_ankle', 'position': {'x': 0.55, 'y': 0.7}, 'score': 1.0}
+        ]
+    
+    def _generate_side_lying_pose_keypoints(self) -> List[Dict[str, Any]]:
+        """Generate keypoints for Side-Lying Relaxation Pose."""
+        return [
+            {'part': 'nose', 'position': {'x': 0.25, 'y': 0.3}, 'score': 1.0},
+            {'part': 'left_eye', 'position': {'x': 0.26, 'y': 0.28}, 'score': 1.0},
+            {'part': 'right_eye', 'position': {'x': 0.24, 'y': 0.28}, 'score': 1.0},
+            {'part': 'left_ear', 'position': {'x': 0.28, 'y': 0.3}, 'score': 1.0},
+            {'part': 'right_ear', 'position': {'x': 0.22, 'y': 0.3}, 'score': 1.0},
+            {'part': 'left_shoulder', 'position': {'x': 0.3, 'y': 0.4}, 'score': 1.0},
+            {'part': 'right_shoulder', 'position': {'x': 0.35, 'y': 0.4}, 'score': 1.0},
+            {'part': 'left_elbow', 'position': {'x': 0.25, 'y': 0.5}, 'score': 1.0},
+            {'part': 'right_elbow', 'position': {'x': 0.4, 'y': 0.5}, 'score': 1.0},
+            {'part': 'left_wrist', 'position': {'x': 0.2, 'y': 0.55}, 'score': 1.0},
+            {'part': 'right_wrist', 'position': {'x': 0.45, 'y': 0.55}, 'score': 1.0},
+            {'part': 'left_hip', 'position': {'x': 0.4, 'y': 0.6}, 'score': 1.0},
+            {'part': 'right_hip', 'position': {'x': 0.45, 'y': 0.6}, 'score': 1.0},
+            {'part': 'left_knee', 'position': {'x': 0.5, 'y': 0.7}, 'score': 1.0},
+            {'part': 'right_knee', 'position': {'x': 0.55, 'y': 0.7}, 'score': 1.0},
+            {'part': 'left_ankle', 'position': {'x': 0.6, 'y': 0.8}, 'score': 1.0},
+            {'part': 'right_ankle', 'position': {'x': 0.65, 'y': 0.8}, 'score': 1.0}
+        ]
+    
     def get_pose_feedback(self, image_data: bytes, pose_id: str, detected_keypoints: List[Dict[str, Any]], is_final: bool = False) -> str:
-        """
-        Get LLM-based feedback on the user's pose using Groq Vision.
-        
-        Args:
-            image_data: JPEG image data as bytes
-            pose_id: Identifier for the yoga pose
-            detected_keypoints: List of keypoints detected from user image
-            is_final: Whether this is the final feedback for the session
-            
-        Returns:
-            Feedback text
-        """
+        """Get LLM-based feedback on the user's pose using Groq Vision."""
         try:
             # Convert image to base64
-            base64_image = base64.b64encode(image_data).decode('utf-8')
+            if isinstance(image_data, bytes):
+                base64_image = base64.b64encode(image_data).decode('utf-8')
+            else:
+                base64_image = image_data
             
             # Get reference pose
             reference_pose = self.get_reference_pose(pose_id)
@@ -660,16 +649,7 @@ class YogaPoseEstimator:
             return "Keep your pose aligned with your breath and maintain a comfortable stance. Remember to modify as needed for your pregnancy."
     
     def estimate_pose(self, image_data: bytes, pose_id: str) -> Dict[str, Any]:
-        """
-        Process image to detect pose, evaluate accuracy, and return results.
-        
-        Args:
-            image_data: JPEG image data as bytes
-            pose_id: Identifier for the yoga pose
-            
-        Returns:
-            Dict with pose estimation results
-        """
+        """Process image to detect pose, evaluate accuracy, and return results."""
         try:
             # Decode base64 image if needed
             if isinstance(image_data, str):
@@ -682,11 +662,8 @@ class YogaPoseEstimator:
             # Preprocess image
             preprocessed_image = self.preprocess_image(image_bytes)
             
-            # Detect pose keypoints
-            if self.use_tf:
-                keypoints = self.detect_pose_tensorflow(preprocessed_image)
-            else:
-                keypoints = self.detect_pose_opencv(preprocessed_image)
+            # Detect pose keypoints with MediaPipe
+            keypoints = self.detect_pose(preprocessed_image)
             
             # Get reference pose
             reference_pose = self.get_reference_pose(pose_id)
@@ -714,17 +691,7 @@ class YogaPoseEstimator:
             }
     
     def generate_reference_pose_with_llm(self, pose_id: str, pose_name: str, pose_description: str) -> list:
-        """
-        Generate reference pose keypoints using LLM instead of hardcoded values.
-        
-        Args:
-            pose_id: The ID of the pose
-            pose_name: The name of the pose
-            pose_description: Description of the pose
-            
-        Returns:
-            List of keypoint dictionaries
-        """
+        """Generate reference pose keypoints using LLM instead of hardcoded values."""
         try:
             logger.info(f"Generating reference pose for {pose_name} using LLM")
             
@@ -786,7 +753,7 @@ class YogaPoseEstimator:
             
             if response.status_code != 200:
                 logger.error(f"LLM API Error: {response.status_code} - {response.text}")
-                return self._generate_default_keypoints()
+                return self._get_pose_specific_keypoints(pose_id)
                 
             result = response.json()
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
@@ -795,7 +762,7 @@ class YogaPoseEstimator:
             json_match = re.search(r'{[\s\S]*}', content)
             if not json_match:
                 logger.error("Could not extract JSON from LLM response")
-                return self._generate_default_keypoints()
+                return self._get_pose_specific_keypoints(pose_id)
                 
             json_str = json_match.group(0)
             data = json.loads(json_str)
@@ -804,7 +771,7 @@ class YogaPoseEstimator:
             keypoints = data.get('keypoints', [])
             if not keypoints or len(keypoints) < len(keypoint_parts):
                 logger.error(f"Incomplete keypoints in LLM response: got {len(keypoints)}, expected {len(keypoint_parts)}")
-                return self._generate_default_keypoints()
+                return self._get_pose_specific_keypoints(pose_id)
                 
             # Ensure all required parts are present
             parts_set = {kp.get('part') for kp in keypoints}
@@ -812,41 +779,14 @@ class YogaPoseEstimator:
             
             if missing_parts:
                 logger.error(f"Missing keypoint parts in LLM response: {missing_parts}")
-                return self._generate_default_keypoints()
+                return self._get_pose_specific_keypoints(pose_id)
                 
             logger.info(f"Successfully generated reference pose for {pose_name} with LLM")
             return keypoints
             
         except Exception as e:
             logger.exception(f"Error generating reference pose with LLM: {str(e)}")
-            return self._generate_default_keypoints()
-
-    def _generate_default_keypoints(self):
-        """Generate default keypoints as a fallback"""
-        logger.warning("Using default keypoints as fallback")
-        
-        # This is just a fallback - normally we would use the LLM-generated keypoints
-        default_keypoints = [
-            {'part': 'nose', 'position': {'x': 0.5, 'y': 0.1}, 'score': 1.0},
-            {'part': 'left_eye', 'position': {'x': 0.47, 'y': 0.09}, 'score': 1.0},
-            {'part': 'right_eye', 'position': {'x': 0.53, 'y': 0.09}, 'score': 1.0},
-            {'part': 'left_ear', 'position': {'x': 0.44, 'y': 0.1}, 'score': 1.0},
-            {'part': 'right_ear', 'position': {'x': 0.56, 'y': 0.1}, 'score': 1.0},
-            {'part': 'left_shoulder', 'position': {'x': 0.42, 'y': 0.22}, 'score': 1.0},
-            {'part': 'right_shoulder', 'position': {'x': 0.58, 'y': 0.22}, 'score': 1.0},
-            {'part': 'left_elbow', 'position': {'x': 0.4, 'y': 0.38}, 'score': 1.0},
-            {'part': 'right_elbow', 'position': {'x': 0.6, 'y': 0.38}, 'score': 1.0},
-            {'part': 'left_wrist', 'position': {'x': 0.38, 'y': 0.52}, 'score': 1.0},
-            {'part': 'right_wrist', 'position': {'x': 0.62, 'y': 0.52}, 'score': 1.0},
-            {'part': 'left_hip', 'position': {'x': 0.46, 'y': 0.54}, 'score': 1.0},
-            {'part': 'right_hip', 'position': {'x': 0.54, 'y': 0.54}, 'score': 1.0},
-            {'part': 'left_knee', 'position': {'x': 0.46, 'y': 0.74}, 'score': 1.0},
-            {'part': 'right_knee', 'position': {'x': 0.54, 'y': 0.74}, 'score': 1.0},
-            {'part': 'left_ankle', 'position': {'x': 0.46, 'y': 0.94}, 'score': 1.0},
-            {'part': 'right_ankle', 'position': {'x': 0.54, 'y': 0.94}, 'score': 1.0}
-        ]
-        
-        return default_keypoints
+            return self._get_pose_specific_keypoints(pose_id)
 
 # Create a singleton instance
 yoga_pose_estimator = YogaPoseEstimator()

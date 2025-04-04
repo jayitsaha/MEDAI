@@ -10,7 +10,8 @@ import {
   Alert,
   Image,
   SafeAreaView,
-  Vibration
+  Vibration,
+  Animated
 } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,13 +30,61 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   const [keypoints, setKeypoints] = useState([]);
   const [referenceKeypoints, setReferenceKeypoints] = useState([]);
   const [stage, setStage] = useState('preparation'); // preparation, practice, completed
+  const [viewMode, setViewMode] = useState('camera'); // 'camera' or 'reference'
   
   const cameraRef = useRef(null);
   const frameProcessorRef = useRef(null);
   const feedbackProcessorRef = useRef(null);
   
+  // Animation values for smooth transitions
+  const cameraScale = useRef(new Animated.Value(1)).current;
+  const referenceScale = useRef(new Animated.Value(0.3)).current;
+  const cameraPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const referencePosition = useRef(new Animated.ValueXY({ x: 15, y: 40 })).current;
+  
   const { width } = Dimensions.get('window');
   const height = width * (16/9); // Maintain 16:9 aspect ratio
+  
+  // Define connections for skeleton visualization
+  const connections = [
+    ['nose', 'left_eye'],
+    ['nose', 'right_eye'],
+    ['left_eye', 'left_ear'],
+    ['right_eye', 'right_ear'],
+    ['left_shoulder', 'right_shoulder'],
+    ['left_shoulder', 'left_elbow'],
+    ['left_elbow', 'left_wrist'],
+    ['right_shoulder', 'right_elbow'],
+    ['right_elbow', 'right_wrist'],
+    ['left_shoulder', 'left_hip'],
+    ['right_shoulder', 'right_hip'],
+    ['left_hip', 'right_hip'],
+    ['left_hip', 'left_knee'],
+    ['left_knee', 'left_ankle'],
+    ['right_hip', 'right_knee'],
+    ['right_knee', 'right_ankle']
+  ];
+  
+  // Effect to animate view changes
+  useEffect(() => {
+    if (viewMode === 'camera') {
+      // Animate camera to full screen and reference to small box
+      Animated.parallel([
+        Animated.spring(cameraScale, { toValue: 1, useNativeDriver: true }),
+        Animated.spring(referenceScale, { toValue: 0.3, useNativeDriver: true }),
+        Animated.spring(cameraPosition, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
+        Animated.spring(referencePosition, { toValue: { x: 15, y: 40 }, useNativeDriver: true })
+      ]).start();
+    } else {
+      // Animate reference to full screen and camera to small box
+      Animated.parallel([
+        Animated.spring(cameraScale, { toValue: 0.3, useNativeDriver: true }),
+        Animated.spring(referenceScale, { toValue: 1, useNativeDriver: true }),
+        Animated.spring(cameraPosition, { toValue: { x: 15, y: 40 }, useNativeDriver: true }),
+        Animated.spring(referencePosition, { toValue: { x: 0, y: 0 }, useNativeDriver: true })
+      ]).start();
+    }
+  }, [viewMode]);
   
   // Get camera permissions on component mount
   useEffect(() => {
@@ -66,6 +115,11 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     };
   }, []);
   
+  // Helper function to find keypoint by name
+  const findKeypointByName = (keypoints, name) => {
+    return keypoints.find(kp => kp.part === name);
+  };
+  
   // Test API connection
   const testAPIConnection = async () => {
     try {
@@ -81,7 +135,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     }
   };
   
-  // Fetch reference pose data from the server (LLM-generated)
+  // Fetch reference pose data from the server
   const fetchReferencePose = async () => {
     if (!pose || !pose.id) {
       console.error('No pose ID available for fetching reference');
@@ -94,7 +148,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
       const response = await axios.get(`${API_BASE_URL}/api/yoga/reference-pose/${pose.id}`);
       if (response.data.success) {
         setReferenceKeypoints(response.data.data.keypoints);
-        console.log('Reference pose fetched successfully');
+        console.log('Reference pose fetched successfully with', response.data.data.keypoints.length, 'keypoints');
       }
     } catch (error) {
       console.error('Error fetching reference pose:', error);
@@ -118,6 +172,9 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     
     // Get initial feedback after 5 seconds to give user time to position
     setTimeout(getLLMFeedback, 5000);
+    
+    // Show vibration feedback when analysis starts
+    Vibration.vibrate(100);
   };
   
   // Stop analyzing yoga pose
@@ -144,7 +201,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     try {
       setIsAnalyzing(true);
       
-      // Capture frame from camera - updated for CameraView
+      // Capture frame from camera
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.5,
         base64: true,
@@ -158,11 +215,17 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
       });
       
       if (response.data.success) {
-        const { accuracy, keypoints } = response.data.data;
+        const { accuracy, keypoints, reference_keypoints } = response.data.data;
         
         // Update state with results
         setPoseAccuracy(Math.round(accuracy));
         setKeypoints(keypoints);
+        
+        // Update reference keypoints if they're available and we don't have them yet
+        if (reference_keypoints && reference_keypoints.length > 0 && 
+            (!referenceKeypoints || referenceKeypoints.length === 0)) {
+          setReferenceKeypoints(reference_keypoints);
+        }
       }
     } catch (error) {
       console.error('Error during pose estimation:', error);
@@ -178,7 +241,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     try {
       setFeedbackLoading(true);
       
-      // Capture frame for LLM analysis - updated for CameraView
+      // Capture frame for LLM analysis
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.5,
         base64: true,
@@ -196,6 +259,9 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
       if (response.data.success) {
         setFeedback(response.data.data.feedback);
         console.log('LLM feedback received');
+        
+        // Vibrate to indicate new feedback
+        Vibration.vibrate(50);
       }
     } catch (error) {
       console.error('Error getting LLM feedback:', error);
@@ -219,6 +285,9 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     
     // Move to completion stage
     setStage('completed');
+    
+    // Vibrate to indicate completion
+    Vibration.vibrate([100, 200, 100]);
   };
   
   // Save session and report back
@@ -235,34 +304,14 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   
   // Render skeleton overlay on the camera view
   const renderSkeleton = (points, color, strokeWidth = 2) => {
-    if (!points || points.length < 15) return null;
-    
-    // Define connections between keypoints for stick figure
-    const connections = [
-      [0, 1], // nose to left eye
-      [0, 2], // nose to right eye
-      [1, 3], // left eye to left ear
-      [2, 4], // right eye to right ear
-      [5, 6], // left shoulder to right shoulder
-      [5, 7], // left shoulder to left elbow
-      [7, 9], // left elbow to left wrist
-      [6, 8], // right shoulder to right elbow
-      [8, 10], // right elbow to right wrist
-      [5, 11], // left shoulder to left hip
-      [6, 12], // right shoulder to right hip
-      [11, 12], // left hip to right hip
-      [11, 13], // left hip to left knee
-      [13, 15], // left knee to left ankle
-      [12, 14], // right hip to right knee
-      [14, 16]  // right knee to right ankle
-    ];
+    if (!points || points.length < 5) return null;
     
     return (
       <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
-        {/* Draw lines for connections */}
+        {/* Draw connections */}
         {connections.map((pair, index) => {
-          const p1 = points[pair[0]];
-          const p2 = points[pair[1]];
+          const p1 = findKeypointByName(points, pair[0]);
+          const p2 = findKeypointByName(points, pair[1]);
           
           if (p1 && p2 && p1.position && p2.position) {
             return (
@@ -346,16 +395,119 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            style={styles.camera}
-            facing={"front"}
-            cameraTargetResolution="720p"
-          />
+          {/* Main Camera View */}
+          <Animated.View
+            style={[
+              styles.animatedView,
+              {
+                transform: [
+                  { scale: cameraScale },
+                  { translateX: cameraPosition.x },
+                  { translateY: cameraPosition.y }
+                ],
+                zIndex: viewMode === 'camera' ? 1 : 0
+              }
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.cameraWrapper}
+              onPress={() => viewMode !== 'camera' && setViewMode('camera')}
+            >
+              <CameraView
+                ref={cameraRef}
+                style={[
+                  styles.camera,
+                  viewMode !== 'camera' && styles.smallCamera
+                ]}
+                facing={"front"}
+                cameraTargetResolution="720p"
+              />
+              
+              {/* User's skeleton overlay */}
+              {keypoints.length > 0 && renderSkeleton(keypoints, '#FF69B4', 3)}
+              
+              {/* ADDED: Prominent Accuracy Meter (always visible) */}
+              <View style={styles.prominentAccuracyContainer}>
+                <Text style={styles.prominentAccuracyLabel}>Pose Accuracy</Text>
+                <View style={styles.prominentAccuracyBar}>
+                  <View 
+                    style={[
+                      styles.prominentAccuracyFill, 
+                      { 
+                        width: `${poseAccuracy}%`,
+                        backgroundColor: getAccuracyColor(poseAccuracy)
+                      }
+                    ]} 
+                  />
+                  <Text style={styles.prominentAccuracyText}>{poseAccuracy}%</Text>
+                </View>
+              </View>
+              
+              {/* ADDED: AI Feedback Panel (always visible) */}
+              <View style={styles.prominentFeedbackContainer}>
+                <View style={styles.feedbackHeader}>
+                  <Ionicons name="analytics" size={18} color="#FFF" />
+                  <Text style={styles.prominentFeedbackTitle}>
+                    AI Guidance {feedbackLoading && <ActivityIndicator size="small" color="#FF69B4" />}
+                  </Text>
+                </View>
+                <Text style={styles.prominentFeedbackText}>{feedback}</Text>
+              </View>
+              
+              {/* ADDED: Exercise Controls (always visible) */}
+              <View style={styles.exerciseControlsContainer}>
+                <TouchableOpacity 
+                  style={styles.prominentCompleteButton} 
+                  onPress={completeSession}
+                >
+                  <Ionicons name="checkmark-circle" size={24} color="#FFF" />
+                  <Text style={styles.prominentButtonText}>Complete Exercise</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
           
-          {/* User's skeleton overlay */}
-          {keypoints.length > 0 && renderSkeleton(keypoints, '#FF69B4', 3)}
+          {/* Reference Pose View (remains the same) */}
+          <Animated.View
+            style={[
+              styles.animatedView,
+              {
+                transform: [
+                  { scale: referenceScale },
+                  { translateX: referencePosition.x },
+                  { translateY: referencePosition.y }
+                ],
+                zIndex: viewMode === 'reference' ? 1 : 0
+              }
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.referenceWrapper}
+              onPress={() => viewMode !== 'reference' && setViewMode('reference')}
+            >
+              <View style={[
+                styles.referenceImageContainer,
+                viewMode === 'reference' && styles.fullScreenReference
+              ]}>
+                <Image
+                  source={{ uri: pose && pose.imageUrl ? pose.imageUrl : 'https://via.placeholder.com/150' }}
+                  style={styles.referenceImage}
+                  resizeMode="contain"
+                />
+                {referenceKeypoints.length > 0 && renderSkeleton(referenceKeypoints, '#4CAF50', 2)}
+                
+                {viewMode === 'reference' && (
+                  <View style={styles.referenceModeIndicator}>
+                    <Text style={styles.referenceModeText}>Reference Pose</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
           
+          {/* Close button */}
           <TouchableOpacity 
             style={styles.closeButton} 
             onPress={onClose}
@@ -363,51 +515,15 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
             <Ionicons name="close" size={24} color="#FFF" />
           </TouchableOpacity>
           
-          {/* Reference pose display */}
-          <View style={styles.referenceContainer}>
-            <View style={styles.referenceImageContainer}>
-              <Image
-                source={{ uri: pose && pose.imageUrl ? pose.imageUrl : 'https://via.placeholder.com/150' }}
-                style={styles.referenceImage}
-                resizeMode="contain"
-              />
-              {referenceKeypoints.length > 0 && renderSkeleton(referenceKeypoints, '#4CAF50', 2)}
-            </View>
-            <Text style={styles.referenceText}>Reference Pose</Text>
-          </View>
-          
-          {/* Accuracy and feedback display */}
-          <View style={styles.metricsContainer}>
-            <View style={styles.accuracyContainer}>
-              <Text style={styles.metricLabel}>Pose Accuracy</Text>
-              <View style={[styles.accuracyBar, { borderColor: getAccuracyColor(poseAccuracy) }]}>
-                <View 
-                  style={[
-                    styles.accuracyFill, 
-                    { 
-                      width: `${poseAccuracy}%`,
-                      backgroundColor: getAccuracyColor(poseAccuracy)
-                    }
-                  ]} 
-                />
-                <Text style={styles.accuracyText}>{poseAccuracy}%</Text>
-              </View>
-            </View>
-            
-            <View style={styles.feedbackContainer}>
-              <Text style={styles.metricLabel}>
-                AI Guidance {feedbackLoading && <ActivityIndicator size="small" color="#FF69B4" />}
-              </Text>
-              <Text style={styles.feedbackText}>{feedback}</Text>
-            </View>
-          </View>
-          
-          {/* Complete button */}
-          <TouchableOpacity 
-            style={styles.completeButton} 
-            onPress={completeSession}
+          {/* View toggle button */}
+          <TouchableOpacity
+            style={styles.viewToggleButton}
+            onPress={() => setViewMode(viewMode === 'camera' ? 'reference' : 'camera')}
           >
-            <Text style={styles.completeButtonText}>Complete Practice</Text>
+            <Ionicons name="swap-horizontal" size={22} color="#FFF" />
+            <Text style={styles.viewToggleText}>
+              Switch to {viewMode === 'camera' ? 'Reference' : 'Camera'} View
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -448,15 +564,6 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   
   // Render appropriate content based on stage
   const renderContent = () => {
-    // if (hasPermission === null) {
-    //   return (
-    //     <View style={styles.loadingContainer}>
-    //       <ActivityIndicator size="large" color="#FF69B4" />
-    //       <Text style={styles.loadingText}>Loading camera...</Text>
-    //     </View>
-    //   );
-    // }
-    
     if (hasPermission === false) {
       return (
         <View style={styles.loadingContainer}>
@@ -492,6 +599,120 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   };
   
   return renderContent();
+};
+
+const newOverlayStyles = {
+  // Prominent Accuracy Meter
+  prominentAccuracyContainer: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 10,
+  },
+  prominentAccuracyLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    marginBottom: 5,
+  },
+  prominentAccuracyBar: {
+    height: 30,
+    width: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 15,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    justifyContent: 'center',
+  },
+  prominentAccuracyFill: {
+    height: '100%',
+    borderRadius: 15,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  prominentAccuracyText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  
+  // Prominent AI Feedback Panel
+  prominentFeedbackContainer: {
+    position: 'absolute',
+    bottom: 160,
+    left: 15,
+    right: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 15,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: '#FF69B4',
+    zIndex: 10,
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  prominentFeedbackTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginLeft: 6,
+  },
+  prominentFeedbackText: {
+    color: '#FFF',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  
+  // Exercise Controls
+  exerciseControlsContainer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 15,
+    right: 15,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  prominentCompleteButton: {
+    backgroundColor: '#FF69B4',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  prominentButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
 };
 
 const styles = StyleSheet.create({
@@ -588,26 +809,32 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     left: 15,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 15,
     padding: 5,
     alignItems: 'center',
-    width: 120,
+    width: 130,
+    borderWidth: 1,
+    borderColor: '#FF69B4',
   },
   referenceImageContainer: {
-    width: 110,
-    height: 110,
+    width: 120,
+    height: 120,
     backgroundColor: '#222',
     borderRadius: 10,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   referenceImage: {
     width: '100%',
     height: '100%',
+    opacity: 0.6,
   },
   referenceText: {
     fontSize: 12,
     color: '#FFF',
+    fontWeight: '600',
     marginTop: 5,
   },
   metricsContainer: {
@@ -757,6 +984,83 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFF',
   },
+  // New styles for view toggling
+  animatedView: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  cameraWrapper: {
+    flex: 1,
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  smallCamera: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FF69B4',
+  },
+  referenceWrapper: {
+    flex: 1,
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  fullScreenReference: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
+  },
+  cameraModeIndicator: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+  },
+  cameraModeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  referenceModeIndicator: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+  },
+  referenceModeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewToggleButton: {
+    position: 'absolute',
+    top: 40,
+    right: 80,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  viewToggleText: {
+    color: '#FFF',
+    fontSize: 12,
+    marginLeft: 5,
+  },
+  tapToExpandText: {
+    fontSize: 10,
+    color: '#FFE4E1',
+    marginTop: 2,
+  },
+  ...newOverlayStyles
 });
 
 export default YogaPoseEstimator;
