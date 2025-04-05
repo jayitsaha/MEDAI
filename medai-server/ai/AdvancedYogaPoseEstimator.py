@@ -183,12 +183,19 @@ class YogaPoseEstimator:
                 model_name = "movenet_lightning"
                 
             # Load model
-            self.model = hub.load(f"https://tfhub.dev/google/movenet/singlepose/{model_name}/4")
+            self.model = hub.load(f"https://www.kaggle.com/models/google/movenet/TensorFlow2/singlepose-thunder/4")
             self.movenet = self.model.signatures['serving_default']
             
             # Verify model works by running inference on a test image
             test_image = np.zeros((192, 192, 3), dtype=np.uint8)
-            self._run_inference_on_image(test_image)
+
+            image = tf.cast(tf.image.resize_with_pad(test_image, 256, 256), dtype=tf.int32)
+
+
+            print("I RAN TILL HERE")
+            self._run_inference_on_image(image)
+
+            print("TRYING FOR HERE")
             
             logger.info(f"Loaded MoveNet {model_name} model successfully")
             self._model_loaded = True
@@ -261,7 +268,9 @@ class YogaPoseEstimator:
             Array of keypoints [y, x, confidence] for each of the 17 keypoints
         """
         # Convert to tensor, add batch dimension, and ensure int32 dtype
-        input_image = tf.cast(tf.expand_dims(image, axis=0), dtype=tf.int32)
+
+        image_test = tf.cast(tf.image.resize_with_pad(image, 256, 256), dtype=tf.int32)
+        input_image = tf.cast(tf.expand_dims(image_test, axis=0), dtype=tf.int32)
         
         # Run inference
         outputs = self.movenet(input_image)
