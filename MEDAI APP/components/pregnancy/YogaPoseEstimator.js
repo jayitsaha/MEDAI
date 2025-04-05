@@ -1,4 +1,4 @@
-// src/components/pregnancy/YogaPoseEstimator.js - updated with 3D models and better detection
+// src/components/pregnancy/YogaPoseEstimator.js - updated with camera fix and reduced feedback
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  Vibration,
   Animated
 } from 'react-native';
 import { CameraView } from 'expo-camera';
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Line } from 'react-native-svg';
 import axios from 'axios';
 import AccuracyMeter from './AccuracyMeter';
+import ReferenceModelView from './ReferenceModelView';
 
 // Import improved components
 import {
@@ -28,7 +28,7 @@ import {
 import ThreeJsReferenceModel from './ThreeJsReferenceModel';
 
 // API base URL
-const API_BASE_URL = 'http://192.168.255.82:5001'; 
+const API_BASE_URL = 'http://192.168.107.82:5001'; 
 
 const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -44,8 +44,8 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   const [practiceStartTime, setPracticeStartTime] = useState(0);
   const [use3DModels, setUse3DModels] = useState(true); // Toggle for 3D models
   const [analysisStarted, setAnalysisStarted] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
 
-  
   const cameraRef = useRef(null);
   const frameProcessorRef = useRef(null);
   const feedbackProcessorRef = useRef(null);
@@ -79,41 +79,11 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     ['right_knee', 'right_ankle']
   ];
 
-  // useEffect(() => {
-  //   (async () => {
-  //     console.log('YogaPoseEstimator mounted with pose:', pose);
-      
-  //     // Get camera permissions
-  //     const { status } = await CameraView.requestCameraPermissionsAsync();
-  //     setHasPermission('granted');
-      
-  //     if (status !== 'granted') {
-  //       console.log("Camera permission NOT GRANTED");
-  //       Alert.alert(
-  //         'Camera Permission Required',
-  //         'Please grant camera permission to use the yoga pose estimator.',
-  //         [{ text: 'OK', onPress: onClose }]
-  //       );
-  //     }
-      
-  //     // Load initial reference keypoints
-  //     try {
-  //       const initialKeypoints = await getReferencePoseKeypoints(pose?.id || '1-1');
-  //       setReferenceKeypoints(initialKeypoints);
-  //     } catch (error) {
-  //       console.error("Failed to load reference keypoints:", error);
-  //     }
-      
-  //     // Reset pose data in case it was left over from previous session
-  //     resetPoseData();
-  //   })();
-    
-  //   // Cleanup on unmount
-  //   return () => {
-  //     stopAnalysis();
-  //     resetPoseData();
-  //   };
-  // }, []);
+  const VIEW_MODES = {
+    CAMERA: 'camera',
+    REFERENCE: 'reference',
+    SPLIT: 'split'
+  };
 
   useEffect(() => {
     if (pose?.id) {
@@ -150,31 +120,37 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   useEffect(() => {
     (async () => {
       console.log('YogaPoseEstimator mounted with pose:', pose);
-      const { status } = await CameraView.requestCameraPermissionsAsync();
+      try {
+        // Request camera permissions
+        // const { status } = await CameraView.requestCameraPermissionsAsync();
+        // console.log("Camera permission status:", status);
 
-      print(status)
-      setHasPermission('granted');
-      
-      if (status !== 'granted') {
-        console.log("NOT GRANTED");
-        Alert.alert(
-          'Camera Permission Required',
-          'Please grant camera permission to use the yoga pose estimator.',
-          [{ text: 'OK', onPress: onClose }]
-        );
+        // if (status !== 'granted') {
+        //   console.log("Camera permission NOT GRANTED");
+        //   setHasPermission(false);
+        //   Alert.alert(
+        //     'Camera Permission Required',
+        //     'Please grant camera permission to use the yoga pose estimator.',
+        //     [{ text: 'OK', onPress: onClose }]
+        //   );
+        //   return;
+        // }
+        
+        // If we reach here, permission is granted
+        setHasPermission(true);
+        
+        // Load initial reference keypoints
+        const initialKeypoints = await getReferencePoseKeypoints(pose?.id || '1-1');
+        setReferenceKeypoints(initialKeypoints);
+        
+        // Get server reference pose if available
+        await fetchReferencePose();
+        
+        // Don't automatically start analysis here, wait for button click
+        // or for camera to be ready
+      } catch (error) {
+        console.error("Error during initialization:", error);
       }
-      
-      // Load initial reference keypoints
-      const initialKeypoints = getReferencePoseKeypoints(pose?.id || '1-1');
-      setReferenceKeypoints(initialKeypoints);
-      
-      // Test API connection
-      // testAPIConnection();
-      
-      // Get server reference pose if available
-      fetchReferencePose();
-
-      startAnalysis();
     })();
     
     // Cleanup intervals on unmount
@@ -182,21 +158,14 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
       stopAnalysis();
     };
   }, []);
-  
-  // Test API connection
-  const testAPIConnection = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/health`);
-      console.log('API Connection Test:', response.data);
-    } catch (error) {
-      console.error('API Connection Failed:', error.message);
-      Alert.alert(
-        'API Connection Issue',
-        'Using local pose detection. Some features may be limited.',
-        [{ text: 'OK' }]
-      );
+
+  useEffect(() => {
+    // If camera is ready and we're in practice mode, start analysis
+    if (cameraReady && stage === 'practice' && !isRecording) {
+      console.log("Camera is ready and we're in practice mode, starting analysis");
+      initiateAnalysis();
     }
-  };
+  }, [cameraReady, stage]);
   
   // Fetch reference pose data
   const fetchReferencePose = async () => {
@@ -243,8 +212,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
       setFeedback(feedback);
       console.log('Feedback received');
       
-      // Vibrate to indicate new feedback
-      Vibration.vibrate(50);
+      // Removed vibration to avoid click sound
     } catch (error) {
       console.error('Error getting feedback:', error);
       setFeedback('Focus on your alignment and breathing. Keep your movements gentle and modified as needed during pregnancy.');
@@ -267,7 +235,8 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
         quality: 0.5,        // Medium quality is sufficient
         base64: true,        // We need base64 for API
         exif: false,         // Don't need exif data
-        skipProcessing: true // Skip additional processing for speed
+        skipProcessing: true, // Skip additional processing for speed
+        shutterSound: false // Disable shutter sound
       });
       
       if (!photo || !photo.base64) {
@@ -316,34 +285,47 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     }
   };
   
-  // Start analyzing yoga pose
+  // This is what happens when "Start Practice" is clicked
   const startAnalysis = () => {
-    console.log('Starting pose analysis');
+    console.log('Start analysis button clicked, setting stage to practice');
+    
+    // Just change stage to practice - actual analysis will start 
+    // when cameraReady effect triggers
+    setStage('practice');
+    
+    if (cameraReady) {
+      // If camera is already ready, start analysis immediately
+      initiateAnalysis();
+    } else {
+      console.log('Camera not ready yet, waiting for ready event');
+      // Will start when camera reports ready in useEffect
+    }
+  };
+  
+  // Actual analysis initialization separated from the button handler
+  const initiateAnalysis = () => {
+    console.log('Initiating analysis with camera');
     resetPoseData(); // Reset any stale data
     
     setIsRecording(true);
-    setStage('practice');
     setPoseAccuracy(0);
     setPracticeStartTime(new Date().getTime());
     setFeedback('Starting analysis... Position yourself in the pose and hold steady.');
     
-    // Process frames more frequently (every 200ms) for more responsive accuracy updates
-    frameProcessorRef.current = setInterval(handleFrameProcessing, 200);
-
-    handleFrameProcessing()
+    // Reduced frequency to 500ms (from 200ms) to minimize flashing
+    frameProcessorRef.current = setInterval(handleFrameProcessing, 500);
     
-    // Get AI feedback at regular intervals
-    feedbackProcessorRef.current = setInterval(() => handleGetLLMFeedback(false), 30000);
+    // Immediately process first frame
+    handleFrameProcessing();
+    
+    // Reduced feedback frequency to 60 seconds (from 30) to minimize interruptions
+    feedbackProcessorRef.current = setInterval(() => handleGetLLMFeedback(false), 60000);
     
     // Get initial feedback after 5 seconds
     setTimeout(() => handleGetLLMFeedback(false), 5000);
     
-    // Vibration feedback when analysis starts
-    Vibration.vibrate(100);
+    // Removed vibration feedback to eliminate click sounds
   };
-  
-  // Process a frame and detect pose
-  
   
   // Stop analyzing yoga pose
   const stopAnalysis = () => {
@@ -362,70 +344,6 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     }
   };
   
-  // Get feedback from LLM
-  const getLLMFeedback = async (isFinal = false) => {
-    if (!cameraRef.current || !isRecording) return;
-    
-    try {
-      setFeedbackLoading(true);
-      
-      // Take a picture with the camera
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.5,
-        base64: true,
-        skipProcessing: true
-      });
-      
-      // Try to get feedback from server
-      try {
-        const response = await axios.post(`${API_BASE_URL}/api/yoga/posture-feedback`, {
-          image: photo.base64,
-          poseId: pose.id,
-          isFinal,
-          keypoints
-        });
-        
-        if (response.data.success) {
-          setFeedback(response.data.data.feedback);
-          console.log('LLM feedback received');
-          
-          // Vibrate to indicate new feedback
-          Vibration.vibrate(50);
-        }
-      } catch (error) {
-        console.error('Error getting LLM feedback from server:', error);
-        // Generate local feedback as fallback
-        const localFeedback = generateLocalFeedback(isFinal);
-        setFeedback(localFeedback);
-      }
-    } catch (error) {
-      console.error('Error getting feedback:', error);
-      setFeedback('Unable to analyze your posture. Please check your position and try again.');
-    } finally {
-      setFeedbackLoading(false);
-    }
-  };
-  
-  // Generate local feedback if server is unavailable
-  const generateLocalFeedback = (isFinal) => {
-    const accuracy = poseAccuracy;
-    
-    // Generic feedback based on accuracy level
-    if (accuracy < 40) {
-      return isFinal 
-        ? "You need more practice with this pose. Try focusing on proper alignment and balance." 
-        : "Try adjusting your position to match the reference pose better.";
-    } else if (accuracy < 70) {
-      return isFinal
-        ? "Good effort! With a bit more practice, you'll master this pose. Focus on steady breathing and alignment."
-        : "Your pose is getting better. Keep adjusting your arms and legs to improve alignment.";
-    } else {
-      return isFinal
-        ? "Excellent work! You've shown great form. Keep practicing to maintain this quality."
-        : "Great form! Continue holding the pose and focus on your breathing.";
-    }
-  };
-  
   // Complete the session
   const completeSession = async () => {
     // Stop ongoing analysis
@@ -433,7 +351,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     
     // Get final feedback
     try {
-      await getLLMFeedback(true);
+      await handleGetLLMFeedback(true);
     } catch (error) {
       console.error('Error getting final feedback:', error);
     }
@@ -441,8 +359,7 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     // Move to completion stage
     setStage('completed');
     
-    // Vibrate to indicate completion
-    Vibration.vibrate([100, 200, 100]);
+    // Removed vibration to eliminate click sound
   };
   
   // Save session and report back
@@ -531,6 +448,18 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
             style={styles.camera}
             facing="front"
             cameraTargetResolution="720p"
+            onCameraReady={() => {
+              console.log("Camera is ready in preparation stage");
+              setCameraReady(true);
+            }}
+            onMountError={(error) => {
+              console.error("Camera mount error:", error);
+              Alert.alert(
+                "Camera Error",
+                "There was a problem starting the camera. Please try again.",
+                [{ text: "OK" }]
+              );
+            }}
           >
             {/* Show skeleton overlay in preparation stage to help positioning */}
             {keypoints.length > 0 && renderSkeleton(keypoints, '#FF69B4', 3)}
@@ -558,12 +487,12 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
           {/* Reference pose preview using 3D model */}
           <View style={styles.refPosePreviewContainer}>
             {use3DModels ? (
-              <ThreeJsReferenceModel 
-                poseId={pose?.id || '1-1'} 
-                width={120} 
-                height={120}
-                autoRotate={true}
-              />
+              <ReferenceModelView
+              poseId={pose?.id || '1-1'} 
+              width={120} 
+              height={120}
+              autoRotate={true}
+            />
             ) : (
               renderSkeleton(referenceKeypoints, '#4CAF50', 2)
             )}
@@ -629,6 +558,10 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
                 ]}
                 facing="front"
                 cameraTargetResolution="720p"
+                onCameraReady={() => {
+                  console.log("Camera is ready in practice stage");
+                  setCameraReady(true);
+                }}
               >
                 {/* User's skeleton overlay */}
                 {keypoints.length > 0 && renderSkeleton(keypoints, '#FF69B4', 3)}
@@ -694,11 +627,11 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
               ]}>
                 {/* 3D Model or 2D skeleton based on preference */}
                 {use3DModels ? (
-                  <ThreeJsReferenceModel 
+                  <ReferenceModelView
                     poseId={pose?.id || '1-1'} 
-                    width={viewMode === 'reference' ? width : 120} 
-                    height={viewMode === 'reference' ? height : 120}
-                    autoRotate={viewMode === 'reference'}
+                    width={viewMode === VIEW_MODES.REFERENCE ? width : 120} 
+                    height={viewMode === VIEW_MODES.REFERENCE ? height : 120}
+                    autoRotate={viewMode === VIEW_MODES.REFERENCE}
                   />
                 ) : (
                   renderSkeleton(referenceKeypoints, '#4CAF50', viewMode === 'reference' ? 4 : 2)
@@ -795,8 +728,6 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
   
   // Render the appropriate content based on stage
   const renderContent = () => {
-    
-    
     if (stage === 'preparation') {
       return renderPreparation();
     }

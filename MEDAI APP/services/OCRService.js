@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestCameraPermissions, requestMediaLibraryPermissions } from '../utils/PermissionsHelper';
 
 // API base URL - update this to your Flask server address
-const API_URL = 'http://192.168.255.82:5001/api';
+const API_URL = 'http://192.168.107.82:5001/api';
 
 // Process prescription image with Grok Vision
 const processPrescriptionImage = async (imageUri) => {

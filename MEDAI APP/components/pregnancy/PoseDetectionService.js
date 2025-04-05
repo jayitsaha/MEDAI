@@ -1,262 +1,257 @@
 // Improved PoseDetectionService.js
-import { Dimensions } from 'react-native';
 import axios from 'axios';
+import { throttle } from 'lodash';
 
 // API base URL - update this to match your actual server URL
-// This should be configurable in your app settings
-const API_BASE_URL = 'http://192.168.255.82:5001';
+const API_BASE_URL = 'http://192.168.107.82:5001';
+
+// Keypoint names for visualization
+const KEYPOINT_NAMES = [
+  'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
+  'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+  'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
+  'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
+];
+
+// Pose connections for drawing lines between keypoints
+const POSE_CONNECTIONS = [
+  ['nose', 'left_eye'], ['nose', 'right_eye'], ['left_eye', 'left_ear'],
+  ['right_eye', 'right_ear'], ['left_shoulder', 'right_shoulder'],
+  ['left_shoulder', 'left_elbow'], ['right_shoulder', 'right_elbow'],
+  ['left_elbow', 'left_wrist'], ['right_elbow', 'right_wrist'],
+  ['left_shoulder', 'left_hip'], ['right_shoulder', 'right_hip'],
+  ['left_hip', 'right_hip'], ['left_hip', 'left_knee'],
+  ['right_hip', 'right_knee'], ['left_knee', 'left_ankle'],
+  ['right_knee', 'right_ankle']
+];
 
 // Default keypoint positions for different poses (fallback only)
 const DEFAULT_POSE_KEYPOINTS = {
-    // Mountain Pose (1-1)
-    '1-1': [
-      { part: 'nose', position: { x: 0.5, y: 0.1 }, score: 1.0 },
-      { part: 'left_eye', position: { x: 0.47, y: 0.09 }, score: 1.0 },
-      { part: 'right_eye', position: { x: 0.53, y: 0.09 }, score: 1.0 },
-      { part: 'left_ear', position: { x: 0.44, y: 0.1 }, score: 1.0 },
-      { part: 'right_ear', position: { x: 0.56, y: 0.1 }, score: 1.0 },
-      { part: 'left_shoulder', position: { x: 0.42, y: 0.22 }, score: 1.0 },
-      { part: 'right_shoulder', position: { x: 0.58, y: 0.22 }, score: 1.0 },
-      { part: 'left_elbow', position: { x: 0.4, y: 0.38 }, score: 1.0 },
-      { part: 'right_elbow', position: { x: 0.6, y: 0.38 }, score: 1.0 },
-      { part: 'left_wrist', position: { x: 0.38, y: 0.52 }, score: 1.0 },
-      { part: 'right_wrist', position: { x: 0.62, y: 0.52 }, score: 1.0 },
-      { part: 'left_hip', position: { x: 0.46, y: 0.54 }, score: 1.0 },
-      { part: 'right_hip', position: { x: 0.54, y: 0.54 }, score: 1.0 },
-      { part: 'left_knee', position: { x: 0.46, y: 0.74 }, score: 1.0 },
-      { part: 'right_knee', position: { x: 0.54, y: 0.74 }, score: 1.0 },
-      { part: 'left_ankle', position: { x: 0.46, y: 0.94 }, score: 1.0 },
-      { part: 'right_ankle', position: { x: 0.54, y: 0.94 }, score: 1.0 }
-    ],
-    // Cat-Cow Stretch (1-2)
-    '1-2': [
-      { part: 'nose', position: { x: 0.5, y: 0.35 }, score: 1.0 },
-      { part: 'left_eye', position: { x: 0.48, y: 0.33 }, score: 1.0 },
-      { part: 'right_eye', position: { x: 0.52, y: 0.33 }, score: 1.0 },
-      { part: 'left_ear', position: { x: 0.46, y: 0.34 }, score: 1.0 },
-      { part: 'right_ear', position: { x: 0.54, y: 0.34 }, score: 1.0 },
-      { part: 'left_shoulder', position: { x: 0.38, y: 0.4 }, score: 1.0 },
-      { part: 'right_shoulder', position: { x: 0.62, y: 0.4 }, score: 1.0 },
-      { part: 'left_elbow', position: { x: 0.3, y: 0.5 }, score: 1.0 },
-      { part: 'right_elbow', position: { x: 0.7, y: 0.5 }, score: 1.0 },
-      { part: 'left_wrist', position: { x: 0.25, y: 0.6 }, score: 1.0 },
-      { part: 'right_wrist', position: { x: 0.75, y: 0.6 }, score: 1.0 },
-      { part: 'left_hip', position: { x: 0.4, y: 0.65 }, score: 1.0 },
-      { part: 'right_hip', position: { x: 0.6, y: 0.65 }, score: 1.0 },
-      { part: 'left_knee', position: { x: 0.35, y: 0.75 }, score: 1.0 },
-      { part: 'right_knee', position: { x: 0.65, y: 0.75 }, score: 1.0 },
-      { part: 'left_ankle', position: { x: 0.3, y: 0.85 }, score: 1.0 },
-      { part: 'right_ankle', position: { x: 0.7, y: 0.85 }, score: 1.0 }
-    ],
-  };
-  
+  // Mountain Pose (1-1)
+  '1-1': [
+    { part: 'nose', position: { x: 0.5, y: 0.12 }, score: 1.0 },
+    { part: 'left_eye', position: { x: 0.48, y: 0.11 }, score: 1.0 },
+    { part: 'right_eye', position: { x: 0.52, y: 0.11 }, score: 1.0 },
+    { part: 'left_ear', position: { x: 0.46, y: 0.12 }, score: 1.0 },
+    { part: 'right_ear', position: { x: 0.54, y: 0.12 }, score: 1.0 },
+    { part: 'left_shoulder', position: { x: 0.45, y: 0.22 }, score: 1.0 },
+    { part: 'right_shoulder', position: { x: 0.55, y: 0.22 }, score: 1.0 },
+    { part: 'left_elbow', position: { x: 0.42, y: 0.38 }, score: 1.0 },
+    { part: 'right_elbow', position: { x: 0.58, y: 0.38 }, score: 1.0 },
+    { part: 'left_wrist', position: { x: 0.39, y: 0.52 }, score: 1.0 },
+    { part: 'right_wrist', position: { x: 0.61, y: 0.52 }, score: 1.0 },
+    { part: 'left_hip', position: { x: 0.47, y: 0.55 }, score: 1.0 },
+    { part: 'right_hip', position: { x: 0.53, y: 0.55 }, score: 1.0 },
+    { part: 'left_knee', position: { x: 0.47, y: 0.75 }, score: 1.0 },
+    { part: 'right_knee', position: { x: 0.53, y: 0.75 }, score: 1.0 },
+    { part: 'left_ankle', position: { x: 0.47, y: 0.95 }, score: 1.0 },
+    { part: 'right_ankle', position: { x: 0.53, y: 0.95 }, score: 1.0 }
+  ],
+  // Other poses are defined in the backend
+};
 
-// Cached keypoints for interpolation
-let lastServerKeypoints = null;
-let lastKeypointsTimestamp = 0;
-let previousFrameKeypoints = null;
-let lastAccuracy = 50;
-
-// Track server connection status
-let serverHealth = {
-  lastSuccess: 0,
+// API state tracking
+let apiState = {
+  lastRequest: 0,
   failedAttempts: 0,
-  retryInterval: 5000 // 5 seconds between retries
+  backoffTime: 1000, // Start with 1 second backoff
+  maxBackoff: 5000,  // Maximum 5 second backoff
+  isProcessing: false
+};
+
+// Result tracking for smooth transitions
+let lastResponse = {
+  keypoints: null,
+  accuracy: 50,
+  timestamp: 0
 };
 
 /**
- * Process a camera frame to detect pose keypoints
+ * Throttled function to process pose frames. This prevents overwhelming
+ * the backend with too many API calls.
  */
-export const processFrame = async (imageData, poseId) => {
-
-    console.log("IN PROCESS FRAME")
-    try {
-      const currentTime = Date.now();
+export const processFrame = throttle(async (imageData, poseId) => {
+  try {
+    // Make sure we don't have parallel requests in flight
+    if (apiState.isProcessing) {
+      console.log('⏳ Skipping frame - API request already in progress');
       
-      // Always try to use the server for the most accurate results
-      // unless we've had multiple recent failures
-      if (serverHealth.failedAttempts < 3 || currentTime - serverHealth.lastSuccess > serverHealth.retryInterval) {
-        try {
-          console.log(`🌐 Sending frame to server for pose ${poseId}`);
-          
-          // Make sure the image data is formatted correctly
-          if (typeof imageData !== 'string') {
-            throw new Error('Image data must be a string');
-          }
-          
-          // Add proper data URI prefix if missing
-          if (!imageData.startsWith('data:image/')) {
-            imageData = `data:image/jpeg;base64,${imageData}`;
-          }
-          
-          // Log the size for debugging
-          console.log(`📊 Image data size: ~${Math.round(imageData.length/1000)}KB`);
-          
-          // Send to backend with a reasonable timeout
-          const response = await axios.post(
-            `${API_BASE_URL}/api/yoga/pose-estimation`,
-            {
-              image: imageData,
-              poseId: poseId
-            },
-            { 
-              timeout: 5000,  // 5 second timeout
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              }
-            }
-          );
-          
-          console.log(`📡 Server response status: ${response.status}`);
-          
-          if (response.data && response.data.success) {
-            console.log(`✅ Server response received: ${response.data.data.accuracy}% accuracy`);
-            
-            // Save server data for next frame
-            lastServerKeypoints = response.data.data.keypoints;
-            lastKeypointsTimestamp = currentTime;
-            lastAccuracy = response.data.data.accuracy;
-            
-            // Update server health
-            serverHealth.lastSuccess = currentTime;
-            serverHealth.failedAttempts = 0;
-            
-            // Initialize previous keypoints if needed
-            if (!previousFrameKeypoints) {
-              previousFrameKeypoints = lastServerKeypoints;
-            }
-            
-            // Return the server keypoints directly
-            return {
-              keypoints: lastServerKeypoints,
-              accuracy: response.data.data.accuracy,
-              fromServer: true
-            };
-          } else {
-            throw new Error('Invalid server response format');
-          }
-        } catch (error) {
-          console.warn(`❌ Server request failed: ${error.message}`);
-          serverHealth.failedAttempts++;
-          
-          // Log detailed error information
-          if (error.response) {
-            console.error(`Server responded with status ${error.response.status}`);
-            console.error('Response data:', error.response.data);
-          } else if (error.request) {
-            console.error('No response received from server');
-          }
-        }
-      } else {
-        console.log(`⏳ Skipping server request, using local processing (failed attempts: ${serverHealth.failedAttempts})`);
-      }
-      
-      // If server request failed or wasn't attempted, use interpolation
-      if (lastServerKeypoints && previousFrameKeypoints) {
-        console.log('📊 Using interpolated keypoints');
-        
-        // Interpolate between previous and target keypoints
-        const interpolatedKeypoints = interpolateKeypoints(
-          previousFrameKeypoints, 
-          lastServerKeypoints,
-          0.3 // Smoothing factor - higher = more responsive
-        );
-        
-        // Add some random variation to simulate movement
-        const keypointsWithVariation = addNaturalVariation(interpolatedKeypoints);
-        
-        // Add small variation to accuracy too for more responsive feel
-        const randomVariation = (Math.random() - 0.5) * 3;
-        const displayAccuracy = Math.max(0, Math.min(100, lastAccuracy + randomVariation));
-        
-        // Save for next frame
-        previousFrameKeypoints = keypointsWithVariation;
-        
+      // Still return the last results for smooth visualization
+      if (lastResponse.keypoints) {
         return {
-          keypoints: keypointsWithVariation,
-          accuracy: displayAccuracy,
+          keypoints: addSmallVariation(lastResponse.keypoints),
+          accuracy: lastResponse.accuracy,
           fromServer: false
         };
       }
       
-      // If all else fails, return default keypoints
-      console.log('⚠️ Using default keypoints');
-      const defaultKeypoints = poseId in DEFAULT_POSE_KEYPOINTS 
-        ? DEFAULT_POSE_KEYPOINTS[poseId] 
-        : DEFAULT_POSE_KEYPOINTS['1-1']; // Default to mountain pose
-        
-      // Initialize the previous keypoints for next interpolation
-      if (!previousFrameKeypoints) {
-        previousFrameKeypoints = addNaturalVariation(defaultKeypoints);
-      }
-      
-      return {
-        keypoints: addNaturalVariation(defaultKeypoints),
-        accuracy: 50, // Neutral default
-        fromServer: false
-      };
-    } catch (error) {
-      console.error('❌ Error in processFrame:', error);
-      
-      // If we have previous keypoints, use those with variation
-      if (previousFrameKeypoints) {
-        return {
-          keypoints: addNaturalVariation(previousFrameKeypoints),
-          accuracy: lastAccuracy || 50,
-          fromServer: false
-        };
-      }
-      
-      // Last resort - use default pose
       return {
         keypoints: DEFAULT_POSE_KEYPOINTS[poseId] || DEFAULT_POSE_KEYPOINTS['1-1'],
         accuracy: 50,
         fromServer: false
       };
     }
-  };
-
-/**
- * Interpolate between two sets of keypoints for smoother transitions
- */
-const interpolateKeypoints = (previousKeypoints, targetKeypoints, factor = 0.2) => {
-  // Create a map of previous keypoints for easy lookup
-  const prevKeypointMap = {};
-  previousKeypoints.forEach(kp => {
-    prevKeypointMap[kp.part] = kp;
-  });
-
-  // Interpolate each keypoint
-  return targetKeypoints.map(targetKp => {
-    const prevKp = prevKeypointMap[targetKp.part];
-    if (!prevKp) return targetKp; // If no previous keypoint, use target directly
     
-    // Linear interpolation for position
-    const interpolatedPosition = {
-      x: prevKp.position.x + (targetKp.position.x - prevKp.position.x) * factor,
-      y: prevKp.position.y + (targetKp.position.y - prevKp.position.y) * factor
-    };
+    const currentTime = Date.now();
     
-    // Interpolate score as well
-    const interpolatedScore = prevKp.score + (targetKp.score - prevKp.score) * factor;
+    // Check if we should backoff due to previous failures
+    if (apiState.failedAttempts > 0) {
+      const timePassedSinceLastRequest = currentTime - apiState.lastRequest;
+      if (timePassedSinceLastRequest < apiState.backoffTime) {
+        console.log(`⏳ Backing off server requests for ${(apiState.backoffTime - timePassedSinceLastRequest)/1000}s (failures: ${apiState.failedAttempts})`);
+        
+        // Return the last known keypoints with small variation
+        if (lastResponse.keypoints) {
+          return {
+            keypoints: addSmallVariation(lastResponse.keypoints),
+            accuracy: lastResponse.accuracy,
+            fromServer: false
+          };
+        }
+        
+        // No previous keypoints - use defaults
+        return {
+          keypoints: DEFAULT_POSE_KEYPOINTS[poseId] || DEFAULT_POSE_KEYPOINTS['1-1'],
+          accuracy: 50,
+          fromServer: false
+        };
+      }
+    }
     
+    // Make sure image data is properly formatted
+    if (typeof imageData !== 'string') {
+      throw new Error('Image data must be a string');
+    }
+    
+    // Add proper data URI prefix if missing
+    if (!imageData.startsWith('data:image/')) {
+      imageData = `data:image/jpeg;base64,${imageData}`;
+    }
+    
+    // Mark that we're processing a request
+    apiState.isProcessing = true;
+    apiState.lastRequest = currentTime;
+    
+    console.log(`🌐 Sending frame to server for pose ${poseId}`);
+    
+    // Calculate timeout based on failure count (increasing backoff)
+    const timeoutMs = 3000 + Math.min(apiState.failedAttempts * 500, 2000);
+    
+    try {
+      // Send to backend with appropriate timeout
+      const response = await axios.post(
+        `${API_BASE_URL}/api/yoga/pose-estimation`,
+        {
+          image: imageData,
+          poseId: poseId
+        },
+        { 
+          timeout: timeoutMs,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+      
+      console.log(`📡 Server response status: ${response.status}`);
+      
+      if (response.data && response.data.success) {
+        console.log(`✅ Got results: ${response.data.data.accuracy.toFixed(1)}% accuracy`);
+        
+        // Reset failure count
+        apiState.failedAttempts = 0;
+        apiState.backoffTime = 1000; // Reset backoff
+        
+        // Save response for future use
+        lastResponse = {
+          keypoints: response.data.data.keypoints,
+          accuracy: response.data.data.accuracy,
+          timestamp: Date.now()
+        };
+        
+        // Return the response
+        return {
+          keypoints: response.data.data.keypoints,
+          accuracy: response.data.data.accuracy,
+          fromServer: true
+        };
+      } else {
+        throw new Error('Invalid server response format');
+      }
+      
+    } catch (error) {
+      console.warn(`❌ Server request failed: ${error.message}`);
+      
+      // Increase failure count and backoff time
+      apiState.failedAttempts++;
+      apiState.backoffTime = Math.min(
+        apiState.backoffTime * 1.5, 
+        apiState.maxBackoff
+      );
+      
+      // Log detailed error information
+      if (error.response) {
+        console.error(`Server responded with status ${error.response.status}`);
+        console.error('Response data:', error.response.data);
+      } else if (error.request) {
+        console.error('No response received from server');
+      }
+      
+      // Use last successful response with variation if available
+      if (lastResponse.keypoints) {
+        // Add variation to make movement look natural
+        return {
+          keypoints: addSmallVariation(lastResponse.keypoints),
+          accuracy: lastResponse.accuracy,
+          fromServer: false
+        };
+      }
+    } finally {
+      // Mark that we're done processing
+      apiState.isProcessing = false;
+    }
+    
+    // Fallback to default keypoints if we don't have anything else
+    console.log('⚠️ Using default keypoints');
     return {
-      part: targetKp.part,
-      position: interpolatedPosition,
-      score: interpolatedScore
+      keypoints: DEFAULT_POSE_KEYPOINTS[poseId] || DEFAULT_POSE_KEYPOINTS['1-1'],
+      accuracy: 50,
+      fromServer: false
     };
-  });
-};
+    
+  } catch (error) {
+    console.error('❌ Unexpected error in processFrame:', error);
+    
+    // Mark that we're done processing
+    apiState.isProcessing = false;
+    
+    // If we have previous keypoints, use those with variation
+    if (lastResponse.keypoints) {
+      return {
+        keypoints: addSmallVariation(lastResponse.keypoints),
+        accuracy: lastResponse.accuracy,
+        fromServer: false
+      };
+    }
+    
+    // Last resort - use default pose
+    return {
+      keypoints: DEFAULT_POSE_KEYPOINTS[poseId] || DEFAULT_POSE_KEYPOINTS['1-1'],
+      accuracy: 50,
+      fromServer: false
+    };
+  }
+}, 300);  // Throttle to at most one request every 300ms
 
 /**
  * Add small random variations to keypoints to simulate natural movement
  */
-const addNaturalVariation = (keypoints) => {
+const addSmallVariation = (keypoints) => {
   return keypoints.map(kp => {
     // Smaller variation for important points like shoulders, hips
     const isStablePoint = ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip'].includes(kp.part);
-    const variationFactor = isStablePoint ? 0.002 : 0.005;
+    const variationFactor = isStablePoint ? 0.001 : 0.003;
     
     // Generate small random variations
     const xVariation = (Math.random() - 0.5) * variationFactor;
@@ -273,13 +268,13 @@ const addNaturalVariation = (keypoints) => {
 };
 
 /**
- * Get LLM feedback on yoga pose
+ * Throttled function to get feedback from the server
  */
-export const getLLMFeedback = async (imageData, poseId, keypoints, isFinal = false) => {
+export const getLLMFeedback = throttle(async (imageData, poseId, keypoints, isFinal = false) => {
   try {
     console.log(`Getting feedback for pose ${poseId}, final=${isFinal}`);
     
-    // Send to backend
+    // Send to backend (with a longer timeout for LLM processing)
     const response = await axios.post(
       `${API_BASE_URL}/api/yoga/posture-feedback`,
       {
@@ -288,7 +283,7 @@ export const getLLMFeedback = async (imageData, poseId, keypoints, isFinal = fal
         isFinal,
         keypoints
       },
-      { timeout: 5000 } // 5 second timeout
+      { timeout: 10000 } // 10 second timeout for LLM processing
     );
     
     if (response.data && response.data.success && response.data.data.feedback) {
@@ -303,7 +298,7 @@ export const getLLMFeedback = async (imageData, poseId, keypoints, isFinal = fal
     // Generate fallback feedback locally
     return generateLocalFeedback(poseId, isFinal);
   }
-};
+}, 2000);  // Throttle to at most one request every 2 seconds
 
 /**
  * Generate fallback feedback locally
@@ -351,10 +346,13 @@ const generateLocalFeedback = (poseId, isFinal) => {
  * Reset cached data when changing poses
  */
 export const resetPoseData = () => {
-  lastServerKeypoints = null;
-  lastKeypointsTimestamp = 0;
-  previousFrameKeypoints = null;
-  lastAccuracy = 50;
+  lastResponse = {
+    keypoints: null,
+    accuracy: 50,
+    timestamp: 0
+  };
+  
+  // Don't reset API state - that should persist
 };
 
 /**

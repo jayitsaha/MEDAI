@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 
 // API base URL - update this to your Flask server address
-const API_URL = 'http://192.168.255.82:5001/api';
+const API_URL = 'http://192.168.107.82:5001/api';
 
 let subscription = null;
 let accelerometerData = [];

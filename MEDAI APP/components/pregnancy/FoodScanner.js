@@ -20,7 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
-const API_URL = 'http://192.168.255.82:5001';
+const API_URL = 'http://192.168.107.82:5001';
 
 const FoodScanner = ({ pregnancyWeek, navigation, dietPreferences }) => {
   // States for camera and permissions - modified to avoid Camera dependency

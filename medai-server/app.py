@@ -1260,14 +1260,167 @@ Please suggest 3 recipes that can be made primarily with these ingredients. Foll
         return jsonify({'error': str(e)}), 500
     
 
-from ai.simple_yoga_estimator import yoga_pose_estimator
+# from ai.simple_yoga_estimator import yoga_pose_estimator
+
+# @app.route('/api/yoga/pose-estimation', methods=['POST'])
+# def estimate_yoga_pose():
+#     """Process a frame from the camera and estimate yoga pose accuracy."""
+#     try:
+#         if 'image' not in request.json:
+#             print("Error: 'image' not found in request JSON")
+#             return jsonify({'error': 'No image provided'}), 400
+            
+#         # Extract data from request
+#         image_base64 = request.json['image']
+#         pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
+        
+#         # Log request info (without the full image)
+#         print(f"Received pose estimation request for poseId: {pose_id}")
+#         print(f"Image data type: {type(image_base64)}, length: {len(image_base64) if isinstance(image_base64, str) else 'unknown'}")
+        
+#         # Handle data URI format
+#         try:
+#             if image_base64.startswith('data:image/'):
+#                 # Extract just the base64 part
+#                 image_base64 = image_base64.split(',')[1]
+#         except Exception as e:
+#             print(f"Error handling data URI: {e}")
+            
+#         # Decode base64 image
+#         try:
+#             image_data = base64.b64decode(image_base64)
+#             print(f"Successfully decoded base64 image, size: {len(image_data)} bytes")
+#         except Exception as e:
+#             print(f"Failed to decode base64: {e}")
+#             return jsonify({'error': 'Invalid image data: ' + str(e)}), 400
+        
+#         # Process start time for performance monitoring
+#         start_time = time.time()
+        
+#         # Get pose estimation results
+#         try:
+#             results = yoga_pose_estimator.estimate_pose(image_data, pose_id)
+#             print(f"Pose estimation completed with accuracy: {results['accuracy']:.1f}%")
+            
+#             # Calculate processing time
+#             processing_time = time.time() - start_time
+#             print(f"Processing time: {processing_time:.3f}s")
+            
+#             # Return results quickly
+#             return jsonify({
+#                 'success': True,
+#                 'data': {
+#                     'accuracy': results['accuracy'],
+#                     'keypoints': results['keypoints'],
+#                     'referenceKeypoints': results['reference_keypoints'],
+#                     'processingTime': processing_time,
+#                     'timestamp': time.time()
+#                 }
+#             })
+#         except Exception as e:
+#             print(f"Error in pose estimation algorithm: {str(e)}")
+#             raise e
+            
+#     except Exception as e:
+#         print(f"Error in pose estimation endpoint: {str(e)}")
+#         # Return a working fallback even on error
+#         return jsonify({
+#             'success': True,
+#             'data': {
+#                 'accuracy': 50.0,  # Default medium accuracy
+#                 'keypoints': yoga_pose_estimator._get_dummy_keypoints(),
+#                 'referenceKeypoints': yoga_pose_estimator.get_reference_pose(pose_id or '1-1')['keypoints'],
+#                 'error': str(e),
+#                 'timestamp': time.time()
+#             }
+#         })
+
+# @app.route('/api/yoga/posture-feedback', methods=['POST'])
+# def get_yoga_posture_feedback():
+#     """Get feedback for yoga posture improvement."""
+#     try:
+#         if 'image' not in request.json:
+#             return jsonify({'error': 'No image provided'}), 400
+            
+#         image_base64 = request.json['image']
+#         pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
+#         is_final = request.json.get('isFinal', False)
+#         keypoints = request.json.get('keypoints', [])
+        
+#         # Log the request for debugging
+#         print(f"Received feedback request for pose ID: {pose_id}, is_final: {is_final}")
+        
+#         # Decode base64 image
+#         if image_base64.startswith('data:image'):
+#             image_base64 = image_base64.split(',')[1]
+        
+#         try:
+#             image_data = base64.b64decode(image_base64)
+#         except Exception as e:
+#             print(f"Base64 decoding error: {e}")
+#             return jsonify({'error': 'Invalid image data'}), 400
+        
+#         # Get pose feedback
+#         feedback = yoga_pose_estimator.get_pose_feedback(
+#             image_data, 
+#             pose_id, 
+#             keypoints, 
+#             is_final
+#         )
+        
+#         return jsonify({
+#             'success': True,
+#             'data': {
+#                 'feedback': feedback
+#             }
+#         })
+#     except Exception as e:
+#         print(f"Error in posture feedback: {str(e)}")
+#         # Return a simple fallback feedback
+#         fallback_feedback = "Focus on your breathing and alignment. Keep your movements gentle and listen to your body's signals."
+#         if is_final:
+#             fallback_feedback += " You've done well with this practice session!"
+        
+#         return jsonify({
+#             'success': True,
+#             'data': {
+#                 'feedback': fallback_feedback
+#             }
+#         })
+
+# @app.route('/api/yoga/reference-pose/<pose_id>', methods=['GET'])
+# def get_reference_pose(pose_id):
+#     """Get reference keypoints for a specific yoga pose."""
+#     try:
+#         # Get reference pose from estimator
+#         reference_pose = yoga_pose_estimator.get_reference_pose(pose_id)
+        
+#         return jsonify({
+#             'success': True,
+#             'data': reference_pose
+#         })
+#     except Exception as e:
+#         print(f"Error getting reference pose: {str(e)}")
+#         # Return a valid response even on error
+#         return jsonify({
+#             'success': True,
+#             'data': {
+#                 'id': pose_id,
+#                 'title': 'Yoga Pose',
+#                 'keypoints': yoga_pose_estimator._get_dummy_keypoints()
+#             }
+#         })
+
+
+from ai.AdvancedYogaPoseEstimator import advanced_yoga_pose_estimator
+
 
 @app.route('/api/yoga/pose-estimation', methods=['POST'])
 def estimate_yoga_pose():
     """Process a frame from the camera and estimate yoga pose accuracy."""
     try:
         if 'image' not in request.json:
-            print("Error: 'image' not found in request JSON")
+            logger.error("Error: 'image' not found in request JSON")
             return jsonify({'error': 'No image provided'}), 400
             
         # Extract data from request
@@ -1275,8 +1428,7 @@ def estimate_yoga_pose():
         pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
         
         # Log request info (without the full image)
-        print(f"Received pose estimation request for poseId: {pose_id}")
-        print(f"Image data type: {type(image_base64)}, length: {len(image_base64) if isinstance(image_base64, str) else 'unknown'}")
+        logger.info(f"Received pose estimation request for poseId: {pose_id}")
         
         # Handle data URI format
         try:
@@ -1284,14 +1436,14 @@ def estimate_yoga_pose():
                 # Extract just the base64 part
                 image_base64 = image_base64.split(',')[1]
         except Exception as e:
-            print(f"Error handling data URI: {e}")
+            logger.error(f"Error handling data URI: {e}")
             
         # Decode base64 image
         try:
             image_data = base64.b64decode(image_base64)
-            print(f"Successfully decoded base64 image, size: {len(image_data)} bytes")
+            logger.info(f"Successfully decoded base64 image, size: {len(image_data)} bytes")
         except Exception as e:
-            print(f"Failed to decode base64: {e}")
+            logger.error(f"Failed to decode base64: {e}")
             return jsonify({'error': 'Invalid image data: ' + str(e)}), 400
         
         # Process start time for performance monitoring
@@ -1299,14 +1451,14 @@ def estimate_yoga_pose():
         
         # Get pose estimation results
         try:
-            results = yoga_pose_estimator.estimate_pose(image_data, pose_id)
-            print(f"Pose estimation completed with accuracy: {results['accuracy']:.1f}%")
+            results = advanced_yoga_pose_estimator.estimate_pose(image_data, pose_id)
+            logger.info(f"Pose estimation completed with accuracy: {results['accuracy']:.1f}%")
             
             # Calculate processing time
             processing_time = time.time() - start_time
-            print(f"Processing time: {processing_time:.3f}s")
+            logger.info(f"Total processing time: {processing_time:.3f}s")
             
-            # Return results quickly
+            # Return results
             return jsonify({
                 'success': True,
                 'data': {
@@ -1318,18 +1470,19 @@ def estimate_yoga_pose():
                 }
             })
         except Exception as e:
-            print(f"Error in pose estimation algorithm: {str(e)}")
+            logger.error(f"Error in pose estimation algorithm: {str(e)}")
             raise e
             
     except Exception as e:
-        print(f"Error in pose estimation endpoint: {str(e)}")
+        logger.error(f"Error in pose estimation endpoint: {str(e)}")
         # Return a working fallback even on error
         return jsonify({
             'success': True,
             'data': {
                 'accuracy': 50.0,  # Default medium accuracy
-                'keypoints': yoga_pose_estimator._get_dummy_keypoints(),
-                'referenceKeypoints': yoga_pose_estimator.get_reference_pose(pose_id or '1-1')['keypoints'],
+                'keypoints': advanced_yoga_pose_estimator._get_dummy_keypoints(),
+                'referenceKeypoints': advanced_yoga_pose_estimator.get_reference_pose(
+                    request.json.get('poseId', '1-1'))['keypoints'],
                 'error': str(e),
                 'timestamp': time.time()
             }
@@ -1345,10 +1498,9 @@ def get_yoga_posture_feedback():
         image_base64 = request.json['image']
         pose_id = request.json.get('poseId', '1-1')  # Default to mountain pose
         is_final = request.json.get('isFinal', False)
-        keypoints = request.json.get('keypoints', [])
         
         # Log the request for debugging
-        print(f"Received feedback request for pose ID: {pose_id}, is_final: {is_final}")
+        logger.info(f"Received feedback request for pose ID: {pose_id}, is_final: {is_final}")
         
         # Decode base64 image
         if image_base64.startswith('data:image'):
@@ -1357,28 +1509,29 @@ def get_yoga_posture_feedback():
         try:
             image_data = base64.b64decode(image_base64)
         except Exception as e:
-            print(f"Base64 decoding error: {e}")
+            logger.error(f"Base64 decoding error: {e}")
             return jsonify({'error': 'Invalid image data'}), 400
         
-        # Get pose feedback
-        feedback = yoga_pose_estimator.get_pose_feedback(
+        # Get pose estimation with feedback
+        results = advanced_yoga_pose_estimator.estimate_pose_with_feedback(
             image_data, 
             pose_id, 
-            keypoints, 
             is_final
         )
         
         return jsonify({
             'success': True,
             'data': {
-                'feedback': feedback
+                'feedback': results['feedback'],
+                'accuracy': results['accuracy'],
+                'keypoints': results['keypoints'],
             }
         })
     except Exception as e:
-        print(f"Error in posture feedback: {str(e)}")
+        logger.error(f"Error in posture feedback: {str(e)}")
         # Return a simple fallback feedback
         fallback_feedback = "Focus on your breathing and alignment. Keep your movements gentle and listen to your body's signals."
-        if is_final:
+        if request.json.get('isFinal', False):
             fallback_feedback += " You've done well with this practice session!"
         
         return jsonify({
@@ -1393,23 +1546,25 @@ def get_reference_pose(pose_id):
     """Get reference keypoints for a specific yoga pose."""
     try:
         # Get reference pose from estimator
-        reference_pose = yoga_pose_estimator.get_reference_pose(pose_id)
+        reference_pose = advanced_yoga_pose_estimator.get_reference_pose(pose_id)
         
         return jsonify({
             'success': True,
             'data': reference_pose
         })
     except Exception as e:
-        print(f"Error getting reference pose: {str(e)}")
+        logger.error(f"Error getting reference pose: {str(e)}")
         # Return a valid response even on error
         return jsonify({
             'success': True,
             'data': {
                 'id': pose_id,
                 'title': 'Yoga Pose',
-                'keypoints': yoga_pose_estimator._get_dummy_keypoints()
+                'keypoints': advanced_yoga_pose_estimator._get_dummy_keypoints()
             }
         })
+    
+
 
 if __name__ == '__main__':
     # Run the Flask app

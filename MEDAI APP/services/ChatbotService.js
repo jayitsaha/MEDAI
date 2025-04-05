@@ -5,7 +5,7 @@ import axios from 'axios';
 // Define constants
 const CHAT_HISTORY_KEY = 'pregnancy_chat_history';
 // Update this to your actual server URL - likely http://localhost:5001 for local development
-const API_BASE_URL = 'http://192.168.255.82:5001'
+const API_BASE_URL = 'http://192.168.107.82:5001'
 class ChatbotService {
   // Retrieve chat history from AsyncStorage
   async getChatHistory() {

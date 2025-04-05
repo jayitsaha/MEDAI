@@ -17,7 +17,7 @@ import axios from 'axios';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-const API_URL = 'http://192.168.255.82:5001';
+const API_URL = 'http://192.168.107.82:5001';
 const DietPlanner = ({ pregnancyWeek, navigation }) => {
   // State for user preferences
   const [preferences, setPreferences] = useState({
