@@ -66,6 +66,26 @@ const JOINT_READABLE_NAMES = {
 };
 
 /**
+ * Function to transform keypoint coordinates to correct the 90-degree rotation
+ * @param {Object} position - The original position {x, y}
+ * @param {number} width - Screen width
+ * @param {number} height - Screen height
+ * @returns {Object} - Transformed position {x, y}
+ */
+const transformKeypoint = (position, width, height) => {
+  // For a 90-degree counter-clockwise correction of a clockwise rotation:
+  // Original coordinates are (x, y) where 0,0 is top-left
+  // To fix 90-degree clockwise rotation:
+  // new_x = 1 - y (to flip from right-to-left)
+  // new_y = x (to move top coordinate to the right)
+  
+  return {
+    x: (1 - position.y) * width,
+    y: position.x * height
+  };
+};
+
+/**
  * Component for visualizing pose keypoints and skeleton
  */
 const PoseVisualizer = ({ 
@@ -118,11 +138,14 @@ const PoseVisualizer = ({
           // Skip if either keypoint has very low confidence
           if (confidence < 0.2) return null;
           
-          // Scale position to screen dimensions
-          const x1 = p1.position.x * screenWidth;
-          const y1 = p1.position.y * screenHeight;
-          const x2 = p2.position.x * screenWidth;
-          const y2 = p2.position.y * screenHeight;
+          // Transform coordinates to fix rotation
+          const transformed1 = transformKeypoint(p1.position, screenWidth, screenHeight);
+          const transformed2 = transformKeypoint(p2.position, screenWidth, screenHeight);
+          
+          const x1 = transformed1.x;
+          const y1 = transformed1.y;
+          const x2 = transformed2.x;
+          const y2 = transformed2.y;
           
           // Adjust opacity based on confidence
           const opacity = 0.3 + (confidence * 0.7);
@@ -150,9 +173,10 @@ const PoseVisualizer = ({
           // Skip low-confidence keypoints
           if ((kp.score || 0.5) < 0.2) return null;
           
-          // Scale to screen dimensions
-          const x = kp.position.x * screenWidth;
-          const y = kp.position.y * screenHeight;
+          // Transform coordinates to fix rotation
+          const transformed = transformKeypoint(kp.position, screenWidth, screenHeight);
+          const x = transformed.x;
+          const y = transformed.y;
           
           // Adjust joint size based on importance and confidence
           const importance = jointImportance[kp.part] || 0.5;

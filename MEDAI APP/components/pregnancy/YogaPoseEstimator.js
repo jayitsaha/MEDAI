@@ -379,50 +379,70 @@ const YogaPoseEstimator = ({ pose, onClose, onComplete }) => {
     if (!keypointsData || keypointsData.length < 5) return null;
     
     return (
-      <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
-        {/* Draw connections */}
-        {POSE_CONNECTIONS.map((pair, index) => {
-          const p1 = keypointsData.find(kp => kp.part === pair[0]);
-          const p2 = keypointsData.find(kp => kp.part === pair[1]);
-          
-          if (p1 && p2 && p1.position && p2.position) {
-            return (
-              <Line
-                key={`line-${index}`}
-                x1={p1.position.x * width}
-                y1={p1.position.y * height}
-                x2={p2.position.x * width}
-                y2={p2.position.y * height}
-                stroke={color}
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-              />
-            );
-          }
-          return null;
-        })}
-        
-        {/* Draw circles for joints */}
-        {keypointsData.map((point, index) => {
-          if (point && point.position) {
-            // Vary joint size based on importance and confidence
-            const isMainJoint = ['nose', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip'].includes(point.part);
-            const jointSize = isMainJoint ? 5 : 4;
-            const scaledSize = jointSize * (point.score || 0.5);
+      <View style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        <View style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          transform: [
+            { rotate: '-90deg' },
+            { scaleY: -1 }
+          ]
+        }}>
+          <Svg height="100%" width="100%" style={{position: 'absolute', top: 0, left: 0}}>
+            {/* Draw connections */}
+            {POSE_CONNECTIONS.map((pair, index) => {
+              const p1 = keypointsData.find(kp => kp.part === pair[0]);
+              const p2 = keypointsData.find(kp => kp.part === pair[1]);
+              
+              if (p1 && p2 && p1.position && p2.position) {
+                return (
+                  <Line
+                    key={`line-${index}`}
+                    x1={p1.position.x * width}
+                    y1={p1.position.y * height}
+                    x2={p2.position.x * width}
+                    y2={p2.position.y * height}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                  />
+                );
+              }
+              return null;
+            })}
             
-            return (
-              <Circle
-                key={`circle-${index}`}
-                cx={point.position.x * width}
-                cy={point.position.y * height}
-                r={scaledSize}
-                fill={color}
-              />
-            );
-          }
-          return null;
-        })}
-      </Svg>
+            {/* Draw circles for joints */}
+            {keypointsData.map((point, index) => {
+              if (point && point.position) {
+                // Vary joint size based on importance and confidence
+                const isMainJoint = ['nose', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip'].includes(point.part);
+                const jointSize = isMainJoint ? 5 : 4;
+                const scaledSize = jointSize * (point.score || 0.5);
+                
+                return (
+                  <Circle
+                    key={`circle-${index}`}
+                    cx={point.position.x * width}
+                    cy={point.position.y * height}
+                    r={scaledSize}
+                    fill={color}
+                  />
+                );
+              }
+              return null;
+            })}
+          </Svg>
+        </View>
+      </View>
     );
   };
   
