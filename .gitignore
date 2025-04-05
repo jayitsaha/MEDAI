@@ -137,6 +137,8 @@ dist
 
 
 *.yarn
+*.expo
+*.yarn.lock
 
 #py
 

@@ -22,7 +22,7 @@ from io import BytesIO
 import tensorflow as tf
 import tensorflow_hub as hub
 from scipy.ndimage import gaussian_filter1d
-
+os.environ['TF_GRAPPLER_DISABLE'] = '1'
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -195,7 +195,19 @@ class YogaPoseEstimator:
             print("I RAN TILL HERE")
             self._run_inference_on_image(image)
 
-            print("TRYING FOR HERE")
+            print("LOAD CLASSIFICATION MODEL")
+
+            classifiction_model = tf.keras.models.load_model('/Users/j0s0yz3/Documents/MEDAI GIT/MEDAI/medai-server/ai/models/model_yoga_LSTM.h5')
+
+            print(classifiction_model)
+
+            print("CLASSIFICATION MODEL LOADED")
+            
+
+
+
+
+
             
             logger.info(f"Loaded MoveNet {model_name} model successfully")
             self._model_loaded = True
