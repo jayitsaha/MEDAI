@@ -2,7 +2,7 @@
 
 <div align="center">
   
-![MEDAI Logo](https://via.placeholder.com/200x200?text=MEDAI+Logo)
+![MEDAI Logo](https://res.cloudinary.com/dqyfo532e/image/upload/v1743966026/medai-logo_wwfe6e.png)
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://semver.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
