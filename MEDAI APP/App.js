@@ -642,7 +642,7 @@ const App = () => {
 
   useEffect(() => {
     // Initialize fall detection service
-    // FallDetectionService.initialize();
+    FallDetectionService.initialize();
     
     // Setup notifications
     setupNotifications();

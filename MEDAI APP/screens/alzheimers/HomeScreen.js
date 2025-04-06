@@ -25,6 +25,9 @@ import LocationService from '../../services/LocationService';
 const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.9;
 
+import theme from '../../constants/theme';
+
+
 const HomeScreen = ({ navigation }) => {
   const [userName, setUserName] = useState('User');
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -474,36 +477,94 @@ const HomeScreen = ({ navigation }) => {
         </Animated.View>
 
         {/* Quick Access */}
-        <Animated.View 
+<Animated.View 
           style={[
-            styles.sectionContainer, 
+            styles.quickAccessContainer, 
             { 
               opacity: fadeAnim,
               transform: [{ translateY: fadeAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [90, 0]
+                outputRange: [40, 0]
               })}] 
             }
           ]}
         >
-          <Text style={styles.sectionTitle}>Quick Access</Text>
+          <Text style={[styles.sectionTitle, {
+            marginLeft: 23,
+          }]}>Quick Access</Text>
           
-          <View style={styles.featuresContainer}>
-            <Animated.FlatList
-              data={features}
-              renderItem={renderFeatureCard}
-              keyExtractor={item => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.featuresList}
-              snapToInterval={CARD_WIDTH + 20}
-              snapToAlignment="center"
-              decelerationRate="fast"
-              onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                { useNativeDriver: true }
-              )}
-            />
+          <View style={styles.featureGrid}>
+            <TouchableOpacity
+              style={styles.featureCard}
+              onPress={() => navigation.navigate('Medication')}
+            >
+              <LinearGradient
+                colors={[theme.colors.accent.alzheimers.light, theme.colors.accent.alzheimers.main]}
+                start={[0, 0]}
+                end={[1, 1]}
+                style={styles.gradientCard}
+              >
+                <View style={styles.cardIconContainer}>
+                  <Ionicons name="medkit-outline" size={24} color="white" />
+                </View>
+                <Text style={styles.cardTitle}>My Medications</Text>
+                <Text style={styles.cardDescription}>Track and manage your medication schedule</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.featureCard}
+              onPress={() => navigation.navigate('SafeZone')}
+            >
+              <LinearGradient
+                colors={[theme.colors.accent.alzheimers.light, theme.colors.accent.alzheimers.main]}
+                start={[0, 0]}
+                end={[1, 1]}
+                style={styles.gradientCard}
+              >
+                <View style={styles.cardIconContainer}>
+                  <Ionicons name="locate-outline" size={24} color="white" />
+                </View>
+                <Text style={styles.cardTitle}>Safe Zone</Text>
+                <Text style={styles.cardDescription}>Set and manage your safe zone location</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.featureCard}
+              onPress={() => navigation.navigate('Contacts')}
+            >
+              <LinearGradient
+                colors={[theme.colors.accent.alzheimers.light, theme.colors.accent.alzheimers.main]}
+                start={[0, 0]}
+                end={[1, 1]}
+                style={styles.gradientCard}
+              >
+                <View style={styles.cardIconContainer}>
+                  <Ionicons name="call-outline" size={24} color="white" />
+                </View>
+                <Text style={styles.cardTitle}>Emergency Contacts</Text>
+                <Text style={styles.cardDescription}>View and contact your emergency contacts</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.featureCard}
+              onPress={() => navigation.navigate('Journal')}
+            >
+              <LinearGradient
+                colors={[theme.colors.accent.alzheimers.light, theme.colors.accent.alzheimers.main]}
+                start={[0, 0]}
+                end={[1, 1]}
+                style={styles.gradientCard}
+              >
+                <View style={styles.cardIconContainer}>
+                  <Ionicons name="book-outline" size={24} color="white" />
+                </View>
+                <Text style={styles.cardTitle}>Memory Journal</Text>
+                <Text style={styles.cardDescription}>Record and revisit important memories</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
@@ -998,7 +1059,75 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 2,
-  }
+  },
+  quickAccessContainer: {
+    marginBottom: theme.spacing.md,
+  },
+  featureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    padding: 12
+  },
+  featureCard: {
+    width: (width - theme.spacing.md * 2 - theme.spacing.sm) / 2,
+    height: 180,
+    marginBottom: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+    ...theme.shadows.md,
+  },
+  gradientCard: {
+    flex: 1,
+    padding: theme.spacing.md,
+    justifyContent: 'space-between',
+  },
+  cardIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  cardDescription: {
+    fontSize: theme.typography.fontSize.xs,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: theme.spacing.xs,
+  },
+  contactsContainer: {
+    marginTop: 0,
+  },
+  contactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.gray[200],
+  },
+  contactIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.accent.alzheimers.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: theme.typography.fontSize.md,
+    fontWeight: theme.typography.fontWeight.medium,
+    color: theme.colors.gray[900],
+    marginBottom: 3,
+  },
+  contactPhone: {
+    fontSize: theme.typography.fontSize.sm,
+    color: theme.colors.gray[600],
+  },
 });
 
 export default HomeScreen;

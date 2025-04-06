@@ -74,7 +74,7 @@ const MedicationScreen = ({ navigation }) => {
     }
   };
 
-  // Handle prescription upload with Groq Vision analysis
+  // Handle prescription upload with Llama Vision analysis
   const handlePrescriptionUpload = async (useCamera = false) => {
     setProcessingImage(true);
     
@@ -83,7 +83,7 @@ const MedicationScreen = ({ navigation }) => {
       
       if (imageUri) {
         setLoading(true);
-        // Process the prescription image with Groq Vision
+        // Process the prescription image with Llama Vision
         const prescriptionData = await OCRService.processPrescriptionImage(imageUri);
         
         if (prescriptionData && prescriptionData.medicines && prescriptionData.medicines.length > 0) {
@@ -136,7 +136,7 @@ const MedicationScreen = ({ navigation }) => {
     }
   };
 
-  // Handle medicine scanning with Groq Vision
+  // Handle medicine scanning with Llama Vision
   const handleMedicineScan = async () => {
     setLoading(true);
     setScanningMode(true);
@@ -146,7 +146,7 @@ const MedicationScreen = ({ navigation }) => {
       const imageUri = await OCRService.pickImage(true);
       
       if (imageUri) {
-        // Process the medicine image with Groq Vision
+        // Process the medicine image with Llama Vision
         const scanResult = await OCRService.scanMedicine(imageUri);
         
         if (scanResult && scanResult.name) {
@@ -636,7 +636,7 @@ const MedicationScreen = ({ navigation }) => {
               <ActivityIndicator size="large" color="#6A5ACD" />
               <Text style={styles.loadingText}>
                 {processingImage 
-                  ? 'Analyzing with Groq Vision...' 
+                  ? 'Analyzing with Llama Vision...' 
                   : scanningMode 
                     ? 'Identifying medication...' 
                     : 'Processing prescription...'}

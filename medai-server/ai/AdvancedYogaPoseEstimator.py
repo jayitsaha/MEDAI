@@ -195,13 +195,13 @@ class YogaPoseEstimator:
             print("I RAN TILL HERE")
             self._run_inference_on_image(image)
 
-            print("LOAD CLASSIFICATION MODEL")
+            # print("LOAD CLASSIFICATION MODEL")
 
-            classifiction_model = tf.keras.models.load_model('/Users/j0s0yz3/Documents/MEDAI GIT/MEDAI/medai-server/ai/models/model_yoga_LSTM.h5')
+            # classifiction_model = tf.keras.models.load_model('/Users/j0s0yz3/Documents/MEDAI GIT/MEDAI/medai-server/ai/models/model_yoga_LSTM.h5')
 
-            print(classifiction_model)
+            # print(classifiction_model)
 
-            print("CLASSIFICATION MODEL LOADED")
+            # print("CLASSIFICATION MODEL LOADED")
             
 
 

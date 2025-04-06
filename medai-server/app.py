@@ -1007,7 +1007,7 @@ def identify_food_with_vision(image_path: str) -> dict:
             raise Exception(f"Groq API Error: {response.status_code}")
             
     except Exception as e:
-        logger.exception(f"Error identifying food with Groq Vision: {str(e)}")
+        logger.exception(f"Error identifying food with Llama Vision: {str(e)}")
         # Return default structure if analysis fails
         return {
             "name": "Unknown Food Item",
