@@ -41,6 +41,12 @@ const HomeScreen = ({ navigation }) => {
     length: '30 cm',
     weight: '600 g'
   });
+
+    const [weatherData, setWeatherData] = useState({
+      temp: '22°C',
+      condition: 'Sunny',
+      icon: 'sunny'
+    });
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -266,12 +272,10 @@ const HomeScreen = ({ navigation }) => {
               </Text>
             </View>
             
-            <TouchableOpacity style={styles.avatarContainer}>
-              <Image 
-                source={{ uri: 'https://randomuser.me/api/portraits/women/44.jpg' }} 
-                style={styles.avatar} 
-              />
-            </TouchableOpacity>
+            <View style={styles.weatherContainer}>
+              <Ionicons name={weatherData.icon} size={24} color="#FF69B4" />
+              <Text style={styles.temperature}>{weatherData.temp}</Text>
+            </View>
           </View>
           
           <View style={styles.pregnancyInfoContainer}>
@@ -1073,7 +1077,21 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
-  }
+  },
+  weatherContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  temperature: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 5,
+    color: '#666',
+  },
 });
 
 export default HomeScreen;
