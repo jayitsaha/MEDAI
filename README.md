@@ -48,16 +48,19 @@ Built with privacy, accessibility, and medical accuracy at its core, MEDAI aims 
 
 ## 📱 Screenshots
 
-<div align="center">
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 30px;">
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966771/login_screen_b9xzxb.jpg" alt="Login Screen" width="200"/>
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/safezone_lnmctx.jpg" alt="Safezone Feature" width="200"/>
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/preg_dash_ufeobi.jpg" alt="Pregnancy Dashboard" width="200"/>
+
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/diet_bjd4nm.jpg" alt="Diet Planner" width="200"/>
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/yoga_dkwf7k.jpg" alt="Yoga Guidance" width="200"/>
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/guardian_login_vecwhx.jpg" alt="Guardian Login" width="200"/>
+
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966771/pat_guardian_dash_mmk2gu.jpg" alt="Patient-Guardian Dashboard" width="200"/>
   <img src="https://res.cloudinary.com/dqyfo532e/image/upload/v1743966770/emergency_jjnnv0.jpg" alt="Emergency Screen" width="200"/>
 </div>
+
 
 
 ## 🛠️ Technology Stack
