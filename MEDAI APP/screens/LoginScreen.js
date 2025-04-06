@@ -102,7 +102,7 @@ const LoginScreen = ({ navigation, onLogin }) => {
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.appName}>MEDAI</Text>
+          {/* <Text style={styles.appName}>MEDAI</Text> */}
           <Text style={styles.tagline}>Your personal health companion</Text>
         </View>
         
@@ -185,8 +185,8 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 170,
+    height: 170,
     marginBottom: 12,
   },
   appName: {
@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#90A4AE',
     textAlign: 'center',
+    marginTop: -10
   },
   formContainer: {
     width: '100%',

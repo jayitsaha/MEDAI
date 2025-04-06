@@ -1,0 +1,17 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6A5ACD" />
+      <stop offset="100%" stop-color="#FF69B4" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="white"/>
+  <circle cx="512" cy="512" r="384" fill="url(#iconGradient)" opacity="0.9"/>
+  <path d="M337 448C337 403.817 372.817 368 417 368H607C651.183 368 687 403.817 687 448V576C687 620.183 651.183 656 607 656H417C372.817 656 337 620.183 337 576V448Z" fill="white" opacity="0.9"/>
+  <path d="M417 368L417 656" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+  <path d="M607 368L607 656" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+  <path d="M417 512H607" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+  <path d="M367 448L657 448" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+  <path d="M367 576L657 576" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+  <path d="M512 368L512 656" stroke="url(#iconGradient)" stroke-width="32" stroke-linecap="round"/>
+</svg>
