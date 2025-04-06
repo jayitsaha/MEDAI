@@ -29,7 +29,8 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "expo-video"
     ],
     "android": {
       "adaptiveIcon": {

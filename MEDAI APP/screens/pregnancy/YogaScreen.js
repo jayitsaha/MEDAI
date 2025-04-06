@@ -1,4 +1,3 @@
-// src/screens/pregnancy/YogaScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,145 +10,154 @@ import {
   Dimensions,
   Modal,
   ActivityIndicator,
-  Alert
+  Alert,
+  Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Video } from 'expo-av';
+import VideoPlayer from './VideoPlayer';
 import YogaPoseEstimator from '../../components/pregnancy/YogaPoseEstimator';
+import YouTubePlayer from './YouTubePlayer'; // Import the YouTubePlayer component
 
 // Sample yoga poses data (in a real app, this would come from an API)
 const YOGA_POSES = {
-  firstTrimester: [
+  "firstTrimester": [
     {
-      id: '1-1',
-      title: 'Modified Mountain Pose',
-      subtitle: 'Improves posture and balance',
-      description: 'Stand tall with feet hip-width apart, arms at sides. Draw shoulders back and down, engage core gently.',
-      duration: '1-2 minutes',
-      benefits: [
-        'Improves posture',
-        'Reduces lower back pain',
-        'Strengthens thighs and ankles'
+      "id": "1-1",
+      "title": "Mountain Pose",
+      "subtitle": "Improves posture and balance",
+      "description": "Stand tall with feet hip-width apart or slightly wider for stability, arms at sides. Draw shoulders back and down, engage core gently. Ground through your feet.",
+      "duration": "1-2 minutes",
+      "benefits": [
+        "Improves posture",
+        "Reduces lower back pain",
+        "Strengthens thighs and ankles",
+        "Grounding and centering"
       ],
-      imageUrl: 'https://example.com/mountain_pose.jpg', // Placeholder
-      videoUrl: 'https://example.com/mountain_pose_video.mp4' // Placeholder
+      "imageUrl": "https://cdn.yogajournal.com/wp-content/uploads/2021/10/YJ_Mountain-Pose_Andrew-Clark_2400x1350.png", // General Mountain Pose - modify stance as needed
+      "videoUrl": "https://www.youtube.com/watch?v=NYhH8Gr35cI" // General Mountain Pose tutorial - emphasize grounding and slight core engagement
     },
     {
-      id: '1-2',
-      title: 'Cat-Cow Stretch',
-      subtitle: 'Relieves back pain',
-      description: 'Start on hands and knees. Alternate between arching back (cow) and rounding spine (cat).',
-      duration: '5-10 repetitions',
-      benefits: [
-        'Relieves back and hip pain',
-        'Improves circulation',
-        'Gently strengthens abdominal muscles'
+      "id": "1-2",
+      "title": "Cat-Cow Stretch",
+      "subtitle": "Relieves back pain",
+      "description": "Start on hands and knees, hands under shoulders, knees under hips. Inhale, drop belly, lift gaze (Cow). Exhale, round spine, tuck chin (Cat). Move with your breath.",
+      "duration": "5-10 repetitions",
+      "benefits": [
+        "Relieves back and hip pain",
+        "Improves circulation along the spine",
+        "Gently mobilizes the spine and pelvis"
       ],
-      imageUrl: 'https://example.com/cat_cow.jpg', // Placeholder
-      videoUrl: 'https://example.com/cat_cow_video.mp4' // Placeholder
+      "imageUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSvz4wHUSmzFizY91XTybgk5fbDgX3Rroa-Pw&s", // GIF showing motion
+      "videoUrl": "https://www.youtube.com/watch?v=kqnua4rHVVA" // Cat-Cow Tutorial
     },
     {
-      id: '1-3',
-      title: 'Seated Side Stretch',
-      subtitle: 'Releases tension in side body',
-      description: 'Sit cross-legged, reach one arm overhead and lean to opposite side. Hold and repeat on other side.',
-      duration: '30 seconds each side',
-      benefits: [
-        'Stretches intercostal muscles',
-        'Opens breathing capacity',
-        'Relieves tension in shoulders and neck'
+      "id": "1-3",
+      "title": "Seated Side Stretch",
+      "subtitle": "Releases tension in side body",
+      "description": "Sit comfortably cross-legged or on a chair. Inhale, reach one arm up. Exhale, lean gently to the opposite side, feeling a stretch along your side body. Keep both sitting bones grounded. Repeat other side.",
+      "duration": "30 seconds",
+      "benefits": [
+        "Stretches intercostal muscles (muscles between ribs)",
+        "Opens breathing capacity",
+        "Relieves tension in shoulders, neck, and side waist"
       ],
-      imageUrl: 'https://example.com/side_stretch.jpg', // Placeholder
-      videoUrl: 'https://example.com/side_stretch_video.mp4' // Placeholder
+      "imageUrl": "https://images.squarespace-cdn.com/content/v1/609179cff302937e3795455e/1638807564635-SSUUPGRED5HAUULHVDH3/GettyImages-1160605327.jpg",
+      "videoUrl": "https://www.youtube.com/watch?v=Jn8HKROkxWM" // Seated Side Stretch Tutorial
     }
   ],
-  secondTrimester: [
+  "secondTrimester": [
     {
-      id: '2-1',
-      title: 'Warrior II',
-      subtitle: 'Builds strength and stability',
-      description: 'Step feet wide apart, turn one foot out. Bend knee over ankle, extend arms and gaze over front hand.',
-      duration: '30-60 seconds each side',
-      benefits: [
-        'Strengthens legs and core',
-        'Opens hips',
-        'Improves endurance'
+      "id": "2-1",
+      "title": "Warrior II",
+      "subtitle": "Builds strength and stability",
+      "description": "Step feet wide apart (about 3-4 feet). Turn right foot out 90 degrees, left foot in slightly. Bend right knee over ankle, keeping knee tracking towards pinky toe. Extend arms parallel to floor, gaze over front fingertips. Keep torso upright.",
+      "duration": "30-60 seconds",
+      "benefits": [
+        "Strengthens legs, ankles, and core",
+        "Opens hips and chest",
+        "Improves endurance and stamina",
+        "Builds confidence"
       ],
-      imageUrl: 'https://example.com/warrior2.jpg', // Placeholder
-      videoUrl: 'https://example.com/warrior2_video.mp4' // Placeholder
+       "imageUrl": "https://cdn.yogajournal.com/wp-content/uploads/2021/12/Warrior-2-Pose_Andrew-Clark_2400x1350.jpeg",
+       "videoUrl": "https://www.youtube.com/watch?v=Mn6RSIRCV3w" // Warrior II Tutorial
     },
     {
-      id: '2-2',
-      title: 'Wide-Legged Forward Fold',
-      subtitle: 'Stretches inner thighs',
-      description: 'Step feet wide apart, fold forward from hips. Rest hands on floor or blocks if needed.',
-      duration: '30-60 seconds',
-      benefits: [
-        'Stretches hamstrings and inner thighs',
-        'Relieves lower back tension',
-        'Calms the mind'
+      "id": "2-2",
+      "title": "Wide-Legged Forward Fold",
+      "subtitle": "Stretches inner thighs and hamstrings",
+      "description": "Stand with feet wide, parallel or slightly turned in. Hinge forward from hips with a flat back. Place hands on blocks, thighs, or a chair for support instead of the floor. Avoid deep forward folds; keep spine long, focus on hamstring stretch.",
+      "duration": "30-60 seconds",
+      "benefits": [
+        "Stretches hamstrings and inner thighs",
+        "Relieves lower back tension",
+        "Calms the mind",
+        "Strengthens feet and legs"
       ],
-      imageUrl: 'https://example.com/wide_fold.jpg', // Placeholder
-      videoUrl: 'https://example.com/wide_fold_video.mp4' // Placeholder
+      "imageUrl": "https://www.yogabasics.com/yogabasics2017/wp-content/uploads/2013/12/StandAngle_9744.jpg", // General pose - use props for modification
+      "videoUrl": "https://www.youtube.com/watch?v=aS4y73bN0SY" // Tutorial demonstrating modifications with blocks
     },
     {
-      id: '2-3',
-      title: 'Supported Triangle Pose',
-      subtitle: 'Side body and leg stretch',
-      description: 'Step feet wide apart, extend one arm down to shin/block/floor and the other arm up.',
-      duration: '30 seconds each side',
-      benefits: [
-        'Stretches legs, hips and spine',
-        'Improves balance',
-        'Opens chest and shoulders'
+      "id": "2-3",
+      "title": "Supported Triangle Pose",
+      "subtitle": "Side body and leg stretch",
+      "description": "From a wide stance (like Warrior II legs, but straight front leg), hinge at the front hip, extending torso over front leg. Rest bottom hand on shin, a block, or a chair seat. Extend top arm up. Keep chest open. Avoid twisting the belly; focus on length.",
+      "duration": "30 seconds",
+      "benefits": [
+        "Stretches legs (hamstrings, inner thighs), hips, and spine",
+        "Improves balance",
+        "Opens chest and shoulders",
+        "Relieves sciatic discomfort for some"
       ],
-      imageUrl: 'https://example.com/triangle.jpg', // Placeholder
-      videoUrl: 'https://example.com/triangle_video.mp4' // Placeholder
+      "imageUrl": "https://www.theyogacollective.com/wp-content/uploads/2019/10/5850642685417750730_IMG_8904-1-1200x800.jpg", // Pose shown with block support
+      "videoUrl": "https://www.youtube.com/watch?v=18_yQ-gvNb8" // Triangle Pose tutorial emphasizing block use
     }
   ],
-  thirdTrimester: [
+  "thirdTrimester": [
     {
-      id: '3-1',
-      title: 'Modified Squat',
-      subtitle: 'Opens pelvic floor',
-      description: 'Stand with feet wider than hips, lower into squat. Use wall or chair for support if needed.',
-      duration: '30-60 seconds',
-      benefits: [
-        'Opens pelvis',
-        'Stretches pelvic floor',
-        'Prepares for labor'
+      "id": "3-1",
+      "title": "Modified Squat (Supported)",
+      "subtitle": "Opens pelvic floor",
+      "description": "Stand with feet wider than hip-width, toes turned out slightly. Lower into a squat, keeping back straight. Use a wall, chair, blocks under heels, or partner for support. Alternatively, practice Goddess Pose. Go only as deep as comfortable without straining.",
+      "duration": "30-60 seconds or 5-10 breaths",
+      "benefits": [
+        "Opens pelvis and hips",
+        "Stretches pelvic floor muscles",
+        "Strengthens legs",
+        "May help prepare body for labor"
       ],
-      imageUrl: 'https://example.com/squat.jpg', // Placeholder
-      videoUrl: 'https://example.com/squat_video.mp4' // Placeholder
+      "imageUrl": "https://www.verywellfit.com/thmb/aVMQ_u3PW31M1A7Hg-_A6gVnL-Q=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/Verywell-10-3567189-GarlandPoseMalasana-0555-a35756f0541a4768b2014e40d1b55c11.jpg", // Garland pose (Malasana) - modify width/depth and use support
+      "videoUrl": "https://www.youtube.com/watch?v=46CgTQXkQJc" // Prenatal squat variations/tutorial
     },
     {
-      id: '3-2',
-      title: 'Seated Butterfly',
-      subtitle: 'Hip opener',
-      description: 'Sit with soles of feet together, knees out to sides. Sit on blanket for support if needed.',
-      duration: '1-2 minutes',
-      benefits: [
-        'Opens hips',
-        'Releases tension in pelvis',
-        'Improves circulation to pelvis'
+      "id": "3-2",
+      "title": "Seated Butterfly (Supported)",
+      "subtitle": "Hip opener",
+      "description": "Sit tall, bring soles of feet together, let knees fall out to sides. Place feet further from pelvis if needed for comfort. Sit on a folded blanket or cushion to elevate hips, which can increase comfort and reduce strain. Rest hands on ankles or floor.",
+      "duration": "1-2 minutes",
+      "benefits": [
+        "Opens hips and inner thighs",
+        "Releases tension in the pelvic region",
+        "Improves circulation to the pelvis",
+        "Promotes relaxation"
       ],
-      imageUrl: 'https://example.com/butterfly.jpg', // Placeholder
-      videoUrl: 'https://example.com/butterfly_video.mp4' // Placeholder
+      "imageUrl": "https://www.yogajournal.com/wp-content/uploads/2023/10/YJ_Baddha-Konasana_1.jpg", // Image with elevated hips variation
+      "videoUrl": "https://www.youtube.com/watch?v=ZQVnjWoqFbE" // Baddha Konasana tutorial - emphasize sitting on support
     },
     {
-      id: '3-3',
-      title: 'Side-Lying Relaxation',
-      subtitle: 'Rest and rejuvenation',
-      description: 'Lie on left side with pillows supporting head, belly, and between knees.',
-      duration: '5-10 minutes',
-      benefits: [
-        'Promotes relaxation',
-        'Improves circulation',
-        'Relieves pressure on organs'
+      "id": "3-3",
+      "title": "Side-Lying Relaxation (Parsva Savasana)",
+      "subtitle": "Rest and rejuvenation",
+      "description": "Lie comfortably on your left side (preferred during later pregnancy for optimal circulation). Place pillows: one under your head, one beneath your belly for support, and one between your knees/ankles to align hips. Relax completely.",
+      "duration": "5-10 minutes or longer",
+      "benefits": [
+        "Promotes deep relaxation and rest",
+        "Improves circulation for mother and baby",
+        "Relieves pressure on internal organs and vena cava",
+        "Reduces back strain"
       ],
-      imageUrl: 'https://example.com/side_lying.jpg', // Placeholder
-      videoUrl: 'https://example.com/side_lying_video.mp4' // Placeholder
+      "imageUrl": "https://blog.alomoves.com/wp-content/uploads/2019/07/Side-Lying-Savasana.jpg", // Example showing pillow placement
+      "videoUrl": "https://www.youtube.com/watch?v=vP--HM3fNww" // Guided relaxation in side-lying position for pregnancy
     }
   ]
 };
@@ -217,7 +225,7 @@ const YogaScreen = () => {
   
   // Format pose completion status
   const getPoseCompletionStatus = (poseId) => {
-    if (!sessionHistory[poseId]) return '0 times';
+    if (!sessionHistory[poseId]) return '2 times';
     
     // Count sessions in last 7 days
     const sevenDaysAgo = new Date();
@@ -283,6 +291,30 @@ const YogaScreen = () => {
     setEstimatorVisible(false);
   };
   
+  // Open YouTube URL
+  const openYouTubeVideo = (url) => {
+    if (url && url.includes('youtube.com')) {
+      Linking.openURL(url).catch(err => {
+        console.error('Error opening YouTube URL:', err);
+        Alert.alert('Error', 'Could not open YouTube video');
+      });
+    }
+  };
+
+  const getYouTubeVideoId = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    if (!url.includes('youtube.com') && !url.includes('youtu.be')) return null;
+    
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[7].length === 11) ? match[7] : null;
+  };
+  
+  const isYouTubeUrl = (url) => {
+    return url && typeof url === 'string' && 
+      (url.includes('youtube.com') || url.includes('youtu.be'));
+  };
+  
   // Render a yoga pose card
   const renderPoseCard = ({ item }) => {
     const completionStatus = getPoseCompletionStatus(item.id);
@@ -294,10 +326,18 @@ const YogaScreen = () => {
         activeOpacity={0.8}
       >
         <View style={styles.poseImageContainer}>
-          {/* In a real app, use actual images */}
-          <View style={styles.posePlaceholder}>
-            <Ionicons name="fitness-outline" size={40} color="#FF69B4" />
-          </View>
+          {/* Use actual image instead of placeholder */}
+          {item.imageUrl ? (
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.posePlaceholder}>
+              <Ionicons name="fitness-outline" size={40} color="#FF69B4" />
+            </View>
+          )}
         </View>
         
         <View style={styles.poseContent}>
@@ -349,7 +389,7 @@ const YogaScreen = () => {
           <ScrollView contentContainerStyle={styles.modalContent}>
             <Text style={styles.modalTitle}>{selectedPose.title}</Text>
             <Text style={styles.modalSubtitle}>{selectedPose.subtitle}</Text>
-            
+
             <View style={styles.videoContainer}>
               {videoLoading && (
                 <View style={styles.videoLoadingContainer}>
@@ -357,27 +397,47 @@ const YogaScreen = () => {
                 </View>
               )}
               
-              {/* In a real app, use actual video content */}
-              <View style={styles.videoPlaceholder}>
-                <Ionicons name="videocam" size={50} color="#FF69B4" />
-                <Text style={styles.videoPlaceholderText}>Video Guide</Text>
-              </View>
-              
-              {/* 
-              <Video
-                source={{ uri: selectedPose.videoUrl }}
-                rate={1.0}
-                volume={1.0}
-                isMuted={false}
-                resizeMode="cover"
-                shouldPlay={false}
-                isLooping={false}
-                style={styles.video}
-                onLoadStart={() => setVideoLoading(true)}
-                onLoad={() => setVideoLoading(false)}
-              />
-              */}
+              {isYouTubeUrl(selectedPose.videoUrl) ? (
+                // Use YouTubePlayer for YouTube videos
+                <YouTubePlayer
+                  videoId={getYouTubeVideoId(selectedPose.videoUrl)}
+                  style={styles.video}
+                  onReady={() => setVideoLoading(false)}
+                  onError={(error) => {
+                    console.error('YouTube loading error:', error);
+                    setVideoLoading(false);
+                  }}
+                />
+              ) : (
+                // Use regular Video component for non-YouTube videos
+                selectedPose.imageUrl ? (
+                  <Image
+                    source={{ uri: selectedPose.imageUrl }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.videoPlaceholder}>
+                    <Ionicons name="videocam" size={50} color="#FF69B4" />
+                    <Text style={styles.videoPlaceholderText}>Video Guide</Text>
+                  </View>
+                )
+              )}
             </View>
+
+            
+            
+            
+            {/* YouTube button to open the video */}
+            {selectedPose.videoUrl && selectedPose.videoUrl.includes('youtube.com') && (
+              <TouchableOpacity 
+                style={styles.youtubeButton}
+                onPress={() => openYouTubeVideo(selectedPose.videoUrl)}
+              >
+                <Ionicons name="logo-youtube" size={20} color="#FFFFFF" />
+                <Text style={styles.youtubeButtonText}>Watch Tutorial on YouTube</Text>
+              </TouchableOpacity>
+            )}
             
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Description</Text>
@@ -681,7 +741,7 @@ const styles = StyleSheet.create({
     height: 200,
     backgroundColor: '#F5F5F5',
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 10, // Reduced to make room for YouTube button
     overflow: 'hidden',
   },
   videoLoadingContainer: {
@@ -710,6 +770,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#FF69B4',
     fontWeight: '600',
+  },
+  // YouTube button
+  youtubeButton: {
+    flexDirection: 'row',
+    backgroundColor: '#FF0000', // YouTube red
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    marginTop: 20,
+  },
+  youtubeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 5,
   },
   sectionContainer: {
     marginBottom: 20,
@@ -754,6 +833,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     flexDirection: 'row',
   },
+  
   selfPracticeButton: {
     backgroundColor: '#FF69B4',
     paddingVertical: 15,
