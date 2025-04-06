@@ -528,7 +528,7 @@ const MedicationScreen = ({ navigation }) => {
               <Image source={{ uri: item.imageUri }} style={styles.medicineImage} />
             ) : (
               <View style={styles.miniNoImageContainer}>
-                <MaterialCommunityIcons name="pill-multiple" size={32} color="#6A5ACD" />
+                <MaterialCommunityIcons name="pill" size={32} color="#6A5ACD" />
               </View>
             )}
           </View>
@@ -647,7 +647,7 @@ const MedicationScreen = ({ navigation }) => {
             </View>
           ) : medicines.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="pill-multiple" size={64} color="#DDD" />
+              <MaterialCommunityIcons name="pill" size={64} color="#DDD" />
               <Text style={styles.emptyText}>No medications added yet</Text>
               <Text style={styles.emptySubtext}>
                 Upload a prescription or scan your medicines to get started
